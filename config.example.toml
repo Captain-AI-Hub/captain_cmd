@@ -1,0 +1,23 @@
+[mcp_servers]
+content = '''
+{
+    "mcpServers": {
+        "example-stdio-mcp-name": {
+            "transport": "stdio", 
+            "command": "python.exe", 
+            "args": ["path/to/example_mcp.py"]
+        },
+        "example-tcp-mcp-name": {
+            "transport": "streamable_http",
+            "url": "http://mcp-server:port/mcp"
+        }
+     }
+}
+'''
+
+[model_config]
+model_name = ""
+api_key = ""
+base_url = ""
+tool_names = ["example-stdio-mcp-name", "example-tcp-mcp-name"]
+system_prompt = ""

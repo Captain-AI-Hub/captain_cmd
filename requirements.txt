@@ -1,0 +1,12 @@
+# python version: 3.13.2
+langchain==1.0.8
+langgraph==1.0.3
+deepagents==0.2.7
+langchain-mcp-adapters==0.1.13
+mcp==1.21.2
+tavily-python==0.7.13
+Nuitka==2.8.6
+langgraph-checkpoint-sqlite==3.0.0
+aiosqlite==0.21.0
+rich==14.2.0
+prompt_toolkit==3.0.52

@@ -1,0 +1,153 @@
+name: Build Captain CMD Tools
+
+on:
+  push:
+    branches: [ main, master, develop ]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:  # 允许手动触发
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ['3.11']
+      fail-fast: false
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+        cache: 'pip'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install nuitka zstandard ordered-set
+
+    # Windows 特定：安装 MinGW (Nuitka 需要 C 编译器)
+    - name: Install MinGW (Windows)
+      if: runner.os == 'Windows'
+      run: |
+        choco install mingw -y
+      shell: pwsh
+
+    # Linux 特定：安装编译工具
+    - name: Install build tools (Linux)
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y ccache patchelf
+
+    # macOS 特定：确保有 Xcode 命令行工具
+    - name: Setup Xcode (macOS)
+      if: runner.os == 'macOS'
+      run: |
+        sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer
+
+    - name: Build with Nuitka
+      run: python build.py
+
+    - name: List build output
+      run: |
+        ls -la .build/
+      shell: bash
+
+    # 重命名构建产物以包含平台信息
+    - name: Rename artifacts (Windows)
+      if: runner.os == 'Windows'
+      run: |
+        cd .build
+        if (Test-Path "main.exe") {
+          Rename-Item -Path "main.exe" -NewName "captain-cmd-windows-x64.exe"
+        }
+      shell: pwsh
+
+    - name: Rename artifacts (Linux)
+      if: runner.os == 'Linux'
+      run: |
+        cd .build
+        if [ -f "main.bin" ]; then
+          mv main.bin captain-cmd-linux-x64
+          chmod +x captain-cmd-linux-x64
+        fi
+
+    - name: Rename artifacts (macOS)
+      if: runner.os == 'macOS'
+      run: |
+        cd .build
+        if [ -f "main.bin" ]; then
+          mv main.bin captain-cmd-macos-x64
+          chmod +x captain-cmd-macos-x64
+        fi
+
+    # 上传构建产物
+    - name: Upload artifacts (Windows)
+      if: runner.os == 'Windows'
+      uses: actions/upload-artifact@v4
+      with:
+        name: captain-cmd-windows-x64
+        path: |
+          .build/captain-cmd-windows-x64.exe
+          .build/config.toml
+        retention-days: 30
+
+    - name: Upload artifacts (Linux)
+      if: runner.os == 'Linux'
+      uses: actions/upload-artifact@v4
+      with:
+        name: captain-cmd-linux-x64
+        path: |
+          .build/captain-cmd-linux-x64
+          .build/config.toml
+        retention-days: 30
+
+    - name: Upload artifacts (macOS)
+      if: runner.os == 'macOS'
+      uses: actions/upload-artifact@v4
+      with:
+        name: captain-cmd-macos-x64
+        path: |
+          .build/captain-cmd-macos-x64
+          .build/config.toml
+        retention-days: 30
+
+  # 可选：如果是 tag 推送，创建 GitHub Release
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts/
+
+    - name: Display structure of downloaded files
+      run: ls -R artifacts/
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          artifacts/captain-cmd-windows-x64/*
+          artifacts/captain-cmd-linux-x64/*
+          artifacts/captain-cmd-macos-x64/*
+        draft: false
+        prerelease: false
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
