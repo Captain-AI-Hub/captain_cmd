@@ -30,10 +30,8 @@ def get_os_specific_flags():
     flags = []
     
     if system == "Windows":
-        # Windows 特定参数
-        # 如果有图标文件，取消下面注释并修改文件名
-        # flags.append("--windows-icon-from-ico=icon.ico")
-        pass
+        # Windows 使用 MinGW-w64 编译器
+        flags.append("--mingw64")
     elif system == "Linux":
         # Linux 特定参数
         pass
@@ -44,32 +42,27 @@ def get_os_specific_flags():
     return flags
 
 def prepare_compiler_environment():
-    """Ensure platform specific compiler environment settings are applied."""
-    env = os.environ.copy()
-    if platform.system() == "Windows":
-        # Increase MSVC compiler heap to avoid C1002 (out of heap space) errors
-        zm_flag = "/Zm2000"
-        existing = env.get("CL", "")
-        if zm_flag not in existing:
-            env["CL"] = f"{zm_flag} {existing}".strip()
-            env["CCFLAGS"] = f"{zm_flag} {env.get('CCFLAGS', '')}".strip()
-            env["CXXFLAGS"] = f"{zm_flag} {env.get('CXXFLAGS', '')}".strip()
-            print(f"[*] Added '{zm_flag}' to CL/CCFLAGS/CXXFLAGS environment to expand MSVC heap")
-    return env
+    """Return a copy of the current environment for the subprocess call."""
+    return os.environ.copy()
+
+
+def ensure_windows_mingw():
+    """Validate that MinGW-w64 toolchain is available on Windows."""
+    if platform.system() != "Windows":
+        return
+
+    gcc_path = shutil.which("gcc")
+    if not gcc_path:
+        print("[ERROR] MinGW-w64 (gcc) not found in PATH. Make sure MinGW is installed and added to PATH.")
+        sys.exit(1)
+
+    print(f"[*] Using MinGW-w64 compiler at: {gcc_path}")
 def build():
     """执行 Nuitka 构建"""
     print("[+] Starting Nuitka build...")
 
-    if platform.system() == "Windows":
-        cl_path = shutil.which("cl")
-        if cl_path:
-            print(f"[*] Found compiler at: {cl_path}")
-            if "Hostx86" in cl_path or "HostX86" in cl_path:
-                 print("    [WARNING] Detected 32-bit host compiler. This may cause out of memory errors (C1002).")
-                 print("              Please use 'x64 Native Tools Command Prompt' for VS.")
-        else:
-            print("[*] Compiler 'cl.exe' not found in PATH. Nuitka will try to locate it.")
-    
+    ensure_windows_mingw()
+
     output_dir = ".build"
     main_file = "main.py"
     # 基础命令
@@ -83,17 +76,16 @@ def build():
         "--show-progress",        # 显示进度条
         "--show-memory",          # 显示内存使用
         "--disable-ccache",       # 禁用 ccache/clcache (避免缓存导致的问题)
-        "--jobs=4",               # 使用 4 个并发任务（既能减少内存压力，又比 1 快）
         
         # ====== 让 Nuitka 自动追踪所有导入 ======
         "--follow-imports",       # 跟踪所有导入（这是关键！）
         
         # 手动包含本地包
         "--include-package=utils",
+        "--include-package=tools",
         "--include-package=chat",
         "--include-package=agent",
-        "--include-package=tools",
-        
+
         # 强制包含 LangChain 核心库及其所有子模块（使用延迟加载，必须显式包含）
         "--include-package=langchain",
         "--include-package=langchain_core",
@@ -107,6 +99,10 @@ def build():
         "--include-package=langgraph",
         "--include-package=deepagents",
         "--include-package=langchain_community",
+        "--include-package=langchain-google-genai",
+        "--include-package=langchain-mistralai",
+        "--include-package=langchain-huggingface",
+        "--include-package=langchain-xai",
         
         # 手动包含 LangChain 动态加载的扩展（通过配置字符串加载，静态分析无法追踪）
         "--include-package=langchain_deepseek",
@@ -217,6 +213,18 @@ def post_build():
             print(f"    Failed to copy config file: {e}")
     else:
         print(f"    [WARNING] No example config file found: {possible_configs}")
+
+    # 复制 README.md 文件
+    readme_source = "README.md"
+    if os.path.exists(readme_source):
+        try:
+            readme_target = os.path.join(config_target_dir, "README.md")
+            shutil.copy2(readme_source, readme_target)
+            print(f"    Copied '{readme_source}' to '{readme_target}'")
+        except Exception as e:
+            print(f"    Failed to copy README file: {e}")
+    else:
+        print(f"    [WARNING] README.md not found: {readme_source}")
 
     print(f"\n[DONE] All done! Build output is in '{dist_dir}' folder.")
 

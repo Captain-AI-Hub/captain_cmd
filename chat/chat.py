@@ -1,22 +1,39 @@
 from langchain.agents import create_agent
 from langchain.chat_models import init_chat_model
 from langchain_mcp_adapters.client import MultiServerMCPClient
+from agent.agent import build_sub_agent
+from tools.shell_exec import shell_exec
+from tools.web_search import internet_search
 import json
-from typing import Optional, Any
+from typing import Optional, Any, AsyncGenerator, cast
 from langchain_core.messages import HumanMessage
+import os
+from pathlib import Path
 from utils.utils import (
-    get_mcp_servers, cprint, Colors, 
+    cprint, Colors,
     get_database_path, get_local_file_store_path,
-    get_major_config
+    get_major_config, get_model_config
 )
 
-from langchain.agents.middleware import TodoListMiddleware
+from langchain.agents.middleware import (
+    TodoListMiddleware,
+)
+
 from deepagents.middleware import (
     FilesystemMiddleware,
-    SubAgentMiddleware
+    SubAgentMiddleware,
+    CompiledSubAgent
 )
 
-from deepagents.backends import CompositeBackend, FilesystemBackend, StoreBackend
+from deepagents.backends import (
+    CompositeBackend,
+    StateBackend,
+    StoreBackend,
+    FilesystemBackend
+)
+
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.store.memory import InMemoryStore
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.store.sqlite.aio import AsyncSqliteStore
 import aiosqlite
@@ -24,6 +41,9 @@ import aiosqlite
 _store = None
 _checkpoint = None
 _major_agent = None
+
+memory_store = InMemoryStore()
+memory_checkpoint = InMemorySaver()
 
 async def init_resources():
     """初始化数据库连接"""
@@ -49,48 +69,49 @@ async def init_resources():
         return False
 
 async def build_agent(
-    model_name: str, 
-    base_url: str, 
-    api_key: str, 
-    tool_names: list[str], 
-    system_prompt: str, 
+    model_name: str,
+    base_url: str,
+    api_key: str,
+    system_prompt: str,
     workspace_path: str
 ) -> Optional[Any]:
     """构建 deep agent"""
     
-    global _store, _checkpoint, _major_agent
+    global _store, _checkpoint, _major_agent, _llm_tool_selector_model, _summarization_model
     
-    mcp_tools: list[Any] = []
-    
-    # 加载 MCP 工具
-    for tool_name in tool_names:
-        try:
-            config = json.loads(get_mcp_servers())
-            
-            if tool_name not in config.get("mcpServers", {}):
-                cprint(
-                    f"[build_agent] Warning: tool '{tool_name}' not found in mcpServers", 
-                    Colors.WARNING
-                )
-                continue
-            
-            mcp_client = MultiServerMCPClient({
-                tool_name: config["mcpServers"][tool_name]
-            })
-            
-            fetched_tools = await mcp_client.get_tools()
-            if fetched_tools:
-                mcp_tools.extend(fetched_tools)
-                cprint(
-                    f"[build_agent] Loaded {len(fetched_tools)} tools for '{tool_name}'", 
-                    Colors.OKGREEN
-                )
-        except Exception as e:
+    model_config = get_model_config()
+    if model_config == "Error: toml_path is None":
+        raise RuntimeError("Failed to load model config")
+       
+    sub_agent = []
+    sub_agent_model_config = json.loads(model_config.get("sub_agent_model_config", "{}"))
+    for sub_agent_name in model_config.get("sub_agent", []):
+        sub_agent_config = sub_agent_model_config[sub_agent_name]
+        agent = await build_sub_agent(
+            model_name=sub_agent_config["model_name"],
+            base_url=sub_agent_config["base_url"],
+            api_key=sub_agent_config["api_key"],
+            system_prompt=sub_agent_config["system_prompt"],
+            mcp_tools=sub_agent_config["tool_names"],
+        )
+        if agent is not None:
             cprint(
-                f"[build_agent] Warning: failed to load MCP tool '{tool_name}': {e}. Continuing...", 
-                Colors.WARNING
+                f"[build_agent] Sub agent '{sub_agent_name}' built successfully", 
+                Colors.OKGREEN
             )
-    
+            sub_agent.append(
+                CompiledSubAgent(
+                    name=sub_agent_name,
+                    description=sub_agent_config["description"],
+                    runnable=agent
+                )
+            )
+        else:
+            cprint(
+                f"[build_agent] Sub agent '{sub_agent_name}' build failed", 
+                Colors.FAIL
+            )
+
     try:
         # 初始化模型
         model = init_chat_model(
@@ -98,10 +119,10 @@ async def build_agent(
             base_url=base_url,
             api_key=api_key
         )
-        
+                
         cprint(
-            f"[build_agent] Initialized model '{model_name}' with base_url '{base_url}'", 
-            Colors.OKCYAN
+            f"[build_agent] Initialized major model '{model_name}'", 
+            Colors.OKGREEN
         )
         
         # 确保资源已初始化
@@ -112,44 +133,32 @@ async def build_agent(
         # 创建代理
         agent = create_agent(
             model=model,
-            tools=mcp_tools if mcp_tools else None,
             checkpointer=_checkpoint,
+            tools=[shell_exec, internet_search],
             store=_store,
             system_prompt=system_prompt,
             middleware=[
-                TodoListMiddleware(
-                    system_prompt="""You are given complex user tasks. Before acting, break the task into 3-6 actionable steps using the `write_todos` tool.
-                    You are given complex user tasks. Before acting, break the task into 3-6 actionable steps using the `write_todos` tool.
-                    For each step include: objective, priority (high/medium/low), and whether human approval is required.
-                    When steps are complete, update the todo with status: pending/in_progress/done.
-                    """,
-                    tool_description="""
-                    Use `write_todos` to create or update a structured to-do list. Provide JSON-like entries:
-                    - title: short title
-                    - objective: one-sentence goal
-                    - priority: high|medium|low
-                    - status: pending|in_progress|done
-                    - requires_approval: true|false
-                    """
-                ),
+                TodoListMiddleware(),
                 FilesystemMiddleware(
                     backend=lambda rt: CompositeBackend(
                         default=FilesystemBackend(
-                            root_dir=workspace_path,
-                            virtual_mode=True
+                                root_dir=Path(workspace_path).resolve(), 
+                                virtual_mode=True
                         ),
                         routes={
-                            "/memories/": StoreBackend(rt)
+                            "/temp/": StateBackend(rt),
+                            "/memories/": StoreBackend(rt),
                         }
-                    )
-                )
+                    ),
+                ),
+                SubAgentMiddleware(
+                    default_model=model,
+                    default_tools=[],
+                    subagents=sub_agent,
+                ),
             ]
         )
-        
-        cprint(
-            f"[build_agent] Agent created successfully with {len(mcp_tools)} tools", 
-            Colors.OKGREEN
-        )
+
         _major_agent = agent
         return agent
         
@@ -169,10 +178,18 @@ async def process_agent(agent: Any, message: str):
             stream_mode=["updates", "messages"],
             config=get_major_config()
         ):
-            try:
+            try:                
                 if stream_mode == "messages":
                     token, metadata = chunk
+                                        
+                    if metadata is None:
+                        continue
+                    
                     node_name = metadata.get("langgraph_node", "")
+                    
+                    # 检查 token 是否有 content_blocks
+                    if not hasattr(token, 'content_blocks'):
+                        continue
                     
                     for block in token.content_blocks:
                         if block["type"] == "text" and node_name == "model":
@@ -187,8 +204,18 @@ async def process_agent(agent: Any, message: str):
                             }
                 
                 elif stream_mode == "updates":
+                    if chunk is None:
+                        continue
+                    
                     # 从 updates 获取完整的工具调用
                     for node_name, data in chunk.items():
+                        if data is None:
+                            continue
+                        
+                        # 安全获取 messages
+                        if not hasattr(data, 'get'):
+                            continue
+                        
                         messages = data.get("messages", [])
                         for msg in messages:
                             # 完整的工具调用
@@ -201,59 +228,43 @@ async def process_agent(agent: Any, message: str):
                                         "id": tc['id']
                                     }
                             
-                            # 工具结果
                             if msg.__class__.__name__ == "ToolMessage":
-                                # ToolMessage.tool_call_id 对应 tool_call 的 id
-                                result_id = getattr(msg, 'tool_call_id', getattr(msg, 'id', ''))
                                 yield {
                                     "type": "tool_result", 
                                     "content": msg.content, 
-                                    "id": result_id,
+                                    "id": msg.tool_call_id,
                                 }
             except Exception as e:
+                import traceback
                 yield {
                     "type": "error", 
-                    "content": str(e),
+                    "content": f'[process_agent] Inner exception: {e}\n[process_agent] Traceback:\n{traceback.format_exc()}',
                 }
     except Exception as e:
         import traceback
-        print(f"[process_agent] Error: {e}")
-        print(f"[process_agent] Traceback: {traceback.format_exc()}")
         yield {
             "type": "error", 
-            "content": str(e),
+            "content": f'[process_agent] Error: {e}\n[process_agent] Traceback: {traceback.format_exc()}',
         }
 
 async def ChatStream(
-    model_name: str, 
-    base_url: str, 
-    api_key: str, 
-    list_mcp_tools: list[str] | None = None, 
-    system_prompt: str = "", 
+    model_name: str,
+    base_url: str,
+    api_key: str,
+    system_prompt: str = "you are a helpful assistant", 
     human_message: str = "", 
-    tool_names: list[str] | None = None, 
-    workspace_path: str = "",
-
+    workspace_path: str = ".",
 ):
-    """主聊天流"""
+    """chat stream"""
     
     try:
         # 验证输入
-        if not model_name or not base_url or not api_key:
+        if not model_name or not base_url or not api_key or not human_message:
             yield {
                 "type": "error", 
                 "content": "Invalid request: missing required fields"
             }
-            return
-        
-        # 使用 tool_names 或 list_mcp_tools
-        tools_input = tool_names if tool_names is not None else (list_mcp_tools or [])
-        
-        cprint(
-            f"[ChatStream] Request: model={model_name}, tools={len(tools_input)}", 
-            Colors.OKBLUE
-        )
-        
+            return    
         # 初始化资源
         global _store, _checkpoint, _major_agent
         if _store is None or _checkpoint is None:
@@ -273,13 +284,15 @@ async def ChatStream(
                 model_name, 
                 base_url, 
                 api_key, 
-                tools_input, 
                 system_prompt, 
                 workspace_path
             )
         
         if not agent:
-            yield {"type": "error", "content": "Failed to build agent"}
+            yield {
+                "type": "error", 
+                "content": "Failed to build agent"
+            }
             return
         
         # 处理代理流
@@ -318,10 +331,11 @@ async def ChatStream(
                 }
                 
     except Exception as e:
-        cprint(f"[ChatStream] Error: {e}", Colors.FAIL)
         import traceback
-        cprint(traceback.format_exc(), Colors.FAIL)
-        yield {"type": "error", "content": str(e)}
+        yield {
+            "type": "error", 
+            "content": f'[ChatStream] Error: {e}\n[ChatStream] Traceback:\n{traceback.format_exc()}',
+        }
 
 async def cleanup_resources():
     """清理数据库资源"""

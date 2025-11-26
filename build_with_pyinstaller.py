@@ -1,7 +1,6 @@
 import os
 import sys
 import shutil
-import platform
 import subprocess
 from typing import Optional
 
@@ -39,6 +38,10 @@ COLLECT_ALL_PACKAGES = [
     "langchain_anthropic",
     "langchain_groq",
     "langchain_mcp_adapters",
+    "langchain-google-genai",
+    "langchain-mistralai",
+    "langchain-huggingface",
+    "langchain-xai",
     # 其他依赖
     "mcp",
     "pydantic",
@@ -183,6 +186,18 @@ def post_build(dist_path: Optional[str]) -> None:
     target_config = os.path.join(target_dir, "config.toml")
     shutil.copy2(config_template, target_config)
     print(f"    Copied template '{config_template}' to '{target_config}'")
+
+    # 复制 README.md 文件
+    readme_source = "README.md"
+    if os.path.exists(readme_source):
+        try:
+            readme_target = os.path.join(target_dir, "README.md")
+            shutil.copy2(readme_source, readme_target)
+            print(f"    Copied '{readme_source}' to '{readme_target}'")
+        except Exception as e:
+            print(f"    Failed to copy README file: {e}")
+    else:
+        print(f"    [WARNING] README.md not found: {readme_source}")
 
     print(f"\n[DONE] All done! Build output is in '{dist_path}'.")
 

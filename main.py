@@ -3,28 +3,29 @@ from utils.utils import (
     set_database_path, get_database_path, 
     get_local_file_store_path
 )
+
+from utils.save_content import save_content
+
 import argparse
 from chat.chat import ChatStream, cleanup_resources
 import asyncio
 import sys
-import os
 import json
 import time
-from rich.console import Console
+from rich.console import Console, Group
 from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.live import Live
 from rich.table import Table
 from rich.text import Text
 from rich import box
-# from prompt_toolkit import PromptSession
-# from prompt_toolkit.styles import Style
+from prompt_toolkit import PromptSession
+from prompt_toolkit.styles import Style
+from prompt_toolkit.formatted_text import FormattedText
+from collections import OrderedDict
 
 async def main():
     """主程序入口"""
-    
-    # 创建 Rich Console
-    console = Console()
     
     parser = argparse.ArgumentParser(description="Captain Cmd Tools")
     parser.add_argument(
@@ -41,7 +42,23 @@ async def main():
         required=True, 
         help="Path to workspace directory"
     )
+    parser.add_argument(
+        "--output",
+        type=str,
+        default="output.md",
+        required=False,
+        help="Path to save output"
+    )
     args = parser.parse_args()
+
+    # 创建 Rich Console
+    console = Console()
+
+    # 创建 Prompt Session
+    session = PromptSession()
+    prompt_style = Style.from_dict({
+        "prompt": "bold blue",
+    })
 
     # 初始化配置
     set_toml_path(args.config)
@@ -52,7 +69,7 @@ async def main():
         sys.exit(1)
     
     set_database_path(args.workspace)
-    
+
     # 显示欢迎信息
     console.print("\n[bold cyan]🚀 Welcome to Captain Cmd Tools[/bold cyan]")
     
@@ -62,11 +79,6 @@ async def main():
     config_table.add_column("Value", style="green")
     
     config_table.add_row("Model", model_config['model_name'])
-    config_table.add_row("Tools", f"{len(model_config['tool_names'])} loaded")
-    
-    for tool in model_config['tool_names']:
-        config_table.add_row("  →", tool)
-    
     config_table.add_row("Workspace", args.workspace)
     config_table.add_row("CheckpointDB", get_database_path())
     config_table.add_row("StoreDB", get_local_file_store_path())
@@ -103,11 +115,11 @@ async def main():
         while True:
             try:
                 # 获取用户输入
-                # 使用原生 input 避开 rich/prompt_toolkit 对中文光标计算的干扰
-                # 先打印带颜色的提示符
-                console.print("\n[bold blue]>[/bold blue] ", end="")
-                # 使用原生 input 获取输入
-                query_msg = input().strip()
+                query_msg = await session.prompt_async(
+                    FormattedText([('', '\n'), ('class:prompt', '> ')]), 
+                    style=prompt_style
+                )
+                query_msg = query_msg.strip()
                 
                 # 检查退出命令
                 if query_msg.lower() in ["exit", "quit", "q"]:
@@ -121,25 +133,122 @@ async def main():
                 console.print()
                 
                 # 状态管理
-                tool_calls = {}     # {tool_id: {"name": str, "args": dict, "args_str": str}}
-                tool_results = {}   # {tool_id: result_content}
+                # tool_states: {tool_id: {"name", "args_str", "status": "pending"|"complete", "result"}}
+                tool_states = OrderedDict()
+                pending_results = {}  # {tool_id: result} - 结果先于 tool_call 到达时缓存
                 thinking_buffer = []
                 answer_buffer = []
+                current_state = None
+                tools_live = None  # 专门用于工具显示的 Live
                 
+                def render_pending_tools():
+                    """只渲染 pending 状态的工具"""
+                    panels = []
+                    for tool_id, state in tool_states.items():
+                        if state["status"] == "pending":
+                            panel = Panel(
+                                Text.assemble(
+                                    ("🔧 ", "bold cyan"),
+                                    (f"{state['name']}\n", "bold"),
+                                    ("Args: ", "dim"),
+                                    (state['args_str'], "cyan"),
+                                    ("\n\n", ""),
+                                    ("⏳ ", "yellow"),
+                                    ("Processing...", "yellow italic")
+                                ),
+                                title=f"[bold cyan]🔧 Tool Call: {state['name']}[/bold cyan]",
+                                border_style="cyan",
+                                box=box.ROUNDED
+                            )
+                            panels.append(panel)
+                    return Group(*panels) if panels else None
+                
+                def update_tools_live():
+                    """更新工具 Live 显示（只显示 pending 的工具）"""
+                    nonlocal tools_live
+                    pending_content = render_pending_tools()
+                    
+                    if pending_content is None:
+                        # 没有 pending 工具了，停止 Live
+                        if tools_live:
+                            tools_live.stop()
+                            tools_live = None
+                        return
+                    
+                    if tools_live is None:
+                        tools_live = Live(
+                            pending_content,
+                            console=console,
+                            refresh_per_second=12,
+                            transient=True  # Processing 状态会消失
+                        )
+                        tools_live.start()
+                    else:
+                        tools_live.update(pending_content)
+                
+                def print_tool_complete(state):
+                    """打印单个工具的完成结果（永久显示）"""
+                    result_str = state.get("result", "")
+                    if len(result_str) > 1000:
+                        result_str = result_str[:1000] + "\n... (truncated)"
+                    console.print(
+                        Panel(
+                            Text.assemble(
+                                ("🔧 ", "bold cyan"),
+                                (f"{state['name']}\n", "bold"),
+                                ("Args: ", "dim"),
+                                (state['args_str'], "cyan"),
+                                ("\n\nResult:\n", "dim"),
+                                (result_str, "green")
+                            ),
+                            title=f"[bold green]✅ {state['name']} - Complete[/bold green]",
+                            border_style="green",
+                            box=box.ROUNDED
+                        )
+                    )
+                    # 保存工具调用
+                    save_content(args.output, "tool_call", {
+                        "name": state["name"],
+                        "args_str": state["args_str"]
+                    })
+                
+                def stop_tools_live():
+                    """停止工具 Live"""
+                    nonlocal tools_live
+                    if tools_live:
+                        tools_live.stop()
+                        tools_live = None
+
                 # 流式处理响应
-                async for response in ChatStream(
+                async for response in ChatStream( # type: ignore
                     model_name=model_config["model_name"],
                     base_url=model_config["base_url"],
                     api_key=model_config["api_key"],
-                    list_mcp_tools=model_config["tool_names"],
                     system_prompt=model_config["system_prompt"],
                     human_message=query_msg,
                     workspace_path=args.workspace
                 ):
+                    # 跳过 None 响应
+                    if response is None:
+                        continue
+                                                   
                     response_type = response.get("type")
                     content = response.get("content", "")
                     
                     if response_type == "model_thinking":
+                        # 从工具状态切换过来时，停止工具 Live
+                        if current_state in ("tool_call", "tool_result"):
+                            stop_tools_live()
+                        
+                        # 只有从其他状态切换过来时才停止 Live 并保存之前的内容
+                        if current_state != "model_thinking" and current_live:
+                            # 保存之前的 answer 内容（如果有）
+                            if answer_buffer:
+                                save_content(args.output, "answer", "".join(answer_buffer))
+                            answer_buffer = []
+                            stop_current_live()
+                        current_state = "model_thinking"
+
                         thinking_buffer.append(content)
                         thinking_text = "".join(thinking_buffer)
                         
@@ -152,12 +261,19 @@ async def main():
                             ),
                             transient=False
                         )
-                        
                     elif response_type == "model_answer":
-                        # 如果之前是 Thinking，停止它（保留在屏幕上）
-                        if thinking_buffer and current_live:
-                            stop_current_live()
+                        # 从工具状态切换过来时，停止工具 Live
+                        if current_state in ("tool_call", "tool_result"):
+                            stop_tools_live()
+                        
+                        # 只有从其他状态切换过来时才停止 Live 并保存之前的内容
+                        if current_state != "model_answer" and current_live:
+                            # 保存之前的 thinking 内容（如果有）
+                            if thinking_buffer:
+                                save_content(args.output, "think", "".join(thinking_buffer))
                             thinking_buffer = []
+                            stop_current_live()
+                        current_state = "model_answer"
                         
                         answer_buffer.append(content)
                         answer_text = "".join(answer_buffer)
@@ -176,10 +292,18 @@ async def main():
                             ),
                             transient=False
                         )
-                        
                     elif response_type == "tool_call":
-                        # 收到工具调用，停止当前的 Answer Live
-                        stop_current_live()
+                        # 从非工具状态切换过来时，保存之前的内容
+                        if current_state not in ("tool_call", "tool_result"):
+                            if current_live:
+                                if thinking_buffer:
+                                    save_content(args.output, "think", "".join(thinking_buffer))
+                                if answer_buffer:
+                                    save_content(args.output, "answer", "".join(answer_buffer))
+                                thinking_buffer = []
+                                answer_buffer = []
+                                stop_current_live()
+                        current_state = "tool_call"
                         
                         try:
                             tool_data = json.loads(content)
@@ -191,121 +315,81 @@ async def main():
                                 args_str = json.dumps(tool_args, ensure_ascii=False, indent=2)
                             except:
                                 args_str = str(tool_args)
-                                
-                            tool_calls[tool_id] = {
+                            
+                            # 添加到工具状态
+                            tool_states[tool_id] = {
                                 "name": tool_name,
-                                "args": tool_args,
-                                "args_str": args_str
+                                "args_str": args_str,
+                                "status": "pending",
+                                "result": None
                             }
                             
-                            # 检查是否有缓存的结果
-                            if tool_id in tool_results:
-                                tool_result = tool_results[tool_id]
-                                del tool_results[tool_id]
-                                
-                                result_str = str(tool_result)
-                                if len(result_str) > 1000:
-                                    result_str = result_str[:1000] + "\n... (truncated)"
-                                    
-                                console.print(Panel(
-                                    Text.assemble(
-                                        ("🔧 ", "bold cyan"),
-                                        (f"{tool_name}\n", "bold"),
-                                        ("Args: ", "dim"),
-                                        (args_str, "cyan"),
-                                        ("\n\n", ""),
-                                        ("✅ Result:\n", "bold green"),
-                                        (result_str, "green")
-                                    ),
-                                    title=f"[bold green]✅ {tool_name} - Complete[/bold green]",
-                                    border_style="green",
-                                    box=box.ROUNDED
-                                ))
-                                del tool_calls[tool_id]
-                                
+                            # 检查是否有缓存的结果（结果先于 tool_call 到达）
+                            if tool_id in pending_results:
+                                tool_states[tool_id]["status"] = "complete"
+                                tool_states[tool_id]["result"] = str(pending_results[tool_id])
+                                del pending_results[tool_id]
+                                # 停止 Live，打印完成结果
+                                stop_tools_live()
+                                print_tool_complete(tool_states[tool_id])
                             else:
-                                # 显示 Processing 状态 (Transient=True)
-                                stop_current_live()
-                                current_live = Live(
-                                    Panel(
-                                        Text.assemble(
-                                            ("🔧 ", "bold cyan"),
-                                            (f"{tool_name}\n", "bold"),
-                                            ("Args: ", "dim"),
-                                            (args_str, "cyan"),
-                                            ("\n\n", ""),
-                                            ("⏳ ", "yellow"),
-                                            ("Processing...", "yellow italic")
-                                        ),
-                                        title=f"[bold cyan]🔧 Tool Call: {tool_name}[/bold cyan]",
-                                        border_style="cyan",
-                                        box=box.ROUNDED
-                                    ),
-                                    console=console,
-                                    refresh_per_second=12,
-                                    transient=True
-                                )
-                                current_live.start()
-                            
+                                # 更新 Live 显示 Processing
+                                update_tools_live()
+
                         except json.JSONDecodeError:
                             console.print(Panel(f"Error parsing tool call: {content}", style="red"))
                         
                     elif response_type == "tool_result":
+                        current_state = "tool_result"
                         try:
                             result_data = json.loads(content)
                             tool_id = result_data.get('id', '')
                             tool_result = result_data.get('content', content)
                             
-                            if tool_id in tool_calls:
-                                # 停止 Processing Live (它会消失)
-                                stop_current_live()
+                            if tool_id in tool_states:
+                                # 更新工具状态为完成
+                                tool_states[tool_id]["status"] = "complete"
+                                tool_states[tool_id]["result"] = str(tool_result)
                                 
-                                tool_info = tool_calls[tool_id]
-                                tool_name = tool_info["name"]
-                                args_str = tool_info["args_str"]
-                                
-                                result_str = str(tool_result)
-                                if len(result_str) > 1000:
-                                    result_str = result_str[:1000] + "\n... (truncated)"
-                                
-                                console.print(Panel(
-                                    Text.assemble(
-                                        ("🔧 ", "bold cyan"),
-                                        (f"{tool_name}\n", "bold"),
-                                        ("Args: ", "dim"),
-                                        (args_str, "cyan"),
-                                        ("\n\n", ""),
-                                        ("✅ Result:\n", "bold green"),
-                                        (result_str, "green")
-                                    ),
-                                    title=f"[bold green]✅ {tool_name} - Complete[/bold green]",
-                                    border_style="green",
-                                    box=box.ROUNDED
-                                ))
-                                
-                                del tool_calls[tool_id]
+                                # 停止 Live，打印完成结果，然后更新 Live 显示剩余 pending 工具
+                                stop_tools_live()
+                                print_tool_complete(tool_states[tool_id])
+                                # 如果还有其他 pending 工具，重新显示
+                                update_tools_live()
                             else:
-                                tool_results[tool_id] = tool_result
+                                # 结果先于 tool_call 到达，缓存起来
+                                pending_results[tool_id] = tool_result
                                 
                         except json.JSONDecodeError:
                             console.print(Panel(f"Error parsing tool result: {content}", style="red"))
 
                     elif response_type == "error":
+                        # 停止工具 Live
+                        stop_tools_live()
                         stop_current_live()
                         console.print(Panel(
                             content,
-                            title="[bold red]❌ Error[/bold red]",
+                            title="[bold red]❌ Error from ChatStream [/bold red]",
                             border_style="red",
                             box=box.ROUNDED
                         ))
                 
+                # 流结束时处理
+                stop_tools_live()
+                
                 stop_current_live()
                 
+                # 流结束时保存最后的内容
+                if thinking_buffer:
+                    save_content(args.output, "think", "".join(thinking_buffer))
+                if answer_buffer:
+                    save_content(args.output, "answer", "".join(answer_buffer))
+                
                 # 清理状态
-                tool_calls.clear()
-                tool_results.clear()
+                pending_results.clear()
                 thinking_buffer.clear()
                 answer_buffer.clear()
+                current_state = None
                 
             except KeyboardInterrupt:
                 stop_current_live()
@@ -313,12 +397,14 @@ async def main():
                 console.print("\n\n[bold yellow]⚠️  Interrupted by user (Press Ctrl+C again to exit)[/bold yellow]")
                 # 询问是否真的要退出
                 try:
-                    console.print("[yellow]Do you want to exit? (y/n): [/yellow]", end="")
-                    confirm = input().strip().lower()
-                    if confirm in ["y", "yes"]:
+                    confirm = await session.prompt_async(
+                        FormattedText([('class:prompt', 'Do you want to exit? (y/n): ')]),
+                        style=Style.from_dict({"prompt": "yellow"})
+                    )
+                    if confirm.strip().lower() in ["y", "yes"]:
                         console.print("[bold green]👋 Goodbye![/bold green]")
                         break
-                except KeyboardInterrupt:
+                except (KeyboardInterrupt, EOFError):
                     # 第二次 Ctrl+C 直接退出
                     console.print("\n[bold green]👋 Goodbye![/bold green]")
                     break
@@ -354,16 +440,6 @@ async def main():
         await cleanup_resources()
 
 if __name__ == "__main__":
-    # Windows 平台特定设置
-    # if sys.platform == "win32":
-    #     # 强制设置 Python IO 编码
-    #     os.environ["PYTHONIOENCODING"] = "utf-8"
-    #     try:
-    #         # 设置控制台代码页为 UTF-8
-    #         os.system('chcp 65001 >NUL')
-    #     except Exception:
-    #         pass
-
     console = Console()
     try:
         asyncio.run(main())

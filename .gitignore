@@ -4,3 +4,4 @@ test.py
 .captain/
 .build/
 __pycache__
+.python_3_12_venv

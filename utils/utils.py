@@ -1,5 +1,7 @@
 import tomllib
 import os
+import platform
+import subprocess
 
 _toml_path = ""
 _captain_db_path = ""
@@ -52,16 +54,12 @@ def get_model_config():
         config = tomllib.load(f)
     return config["model_config"]
 
-
 def set_database_path(path: str):
     """
     设置工作空间路径
     Args:
         path: 工作空间路径
     """
-    if not path:
-        return "Error: database_path is None"
-    
     base_path = path
     db_path = os.path.join(base_path, ".captain", "checkpoint.db")
     if not os.path.exists(db_path):

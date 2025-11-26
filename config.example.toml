@@ -19,5 +19,59 @@ content = '''
 model_name = ""
 api_key = ""
 base_url = ""
-tool_names = []
+# 不要给 major_agent 添加工具, 应该把工具给 sub_agent。
+# tool_names = [] 
 system_prompt = ""
+
+# # LLMToolSelector model (disabled)
+# # create_agent 本身就能让 LLM 决定是否使用工具，额外的选择器会产生冲突
+# LLMToolSelector_model_name = ""
+# LLMToolSelector_api_key = ""
+# LLMToolSelector_base_url = ""
+
+# # Summarization model (disabled)
+# # 现代 LLM 可以自己管理上下文，自动摘要会干扰正常流程 (自动摘要会干扰正常流程)
+# Summarization_model_name = ""
+# Summarization_api_key = ""
+# Summarization_base_url = ""
+
+# # ShellTool model (disabled)
+# # 已经内置了 shell_exec 工具
+# ShellTool_model_name = ""
+# ShellTool_api_key = ""
+# ShellTool_base_url = ""
+# ShellTool_system_prompt = """
+# You are a helpful assistant that executes shell commands
+# """
+
+# VLM Model
+VLM_model_name = ""
+VLM_api_key = ""
+VLM_base_url = ""
+VLM_system_prompt = """
+You are a helpful assistant that uses Vision Language Model to analyze images and text.
+"""
+
+# SubAgent model
+sub_agent = ["sub_agent_1", "sub_agent_2"]
+
+sub_agent_model_config = '''
+{
+    "sub_agent_1": {
+        "model_name": "",
+        "api_key": "",
+        "base_url": "",
+        "system_prompt": "",
+        "tool_names": ["example-stdio-mcp-name", "..."]
+    },
+    "sub_agent_2": {
+        "model_name": "",
+        "api_key": "",
+        "base_url": "",
+        "system_prompt": "",
+        "tool_names": ["example-tcp-mcp-name", "..."]
+    }
+}
+'''
+
+tavily_api_key = ""

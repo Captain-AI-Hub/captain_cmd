@@ -1,4 +1,4 @@
-name: Build Captain CMD Tools
+name: Build Captain CMD Tools (Nuitka)
 
 on:
   workflow_dispatch:  # 仅手动触发
@@ -37,23 +37,25 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Set up Python ${{ matrix.python-version }}
+    - name: Set up Python (Windows - 3.12)
+      if: runner.os == 'Windows'
       uses: actions/setup-python@v5
       with:
-        python-version: ${{ matrix.python-version }}
+        python-version: '3.12'
         cache: 'pip'
 
-    - name: Setup MSVC build environment
-      if: runner.os == 'Windows'
-      uses: ilammy/msvc-dev-cmd@v1
+    - name: Set up Python (Non-Windows - 3.13)
+      if: runner.os != 'Windows'
+      uses: actions/setup-python@v5
       with:
-        arch: amd64
+        python-version: '3.13'
+        cache: 'pip'
 
-    # - name: Set up MinGW (Windows)
-    #   if: runner.os == 'Windows'
-    #   uses: egor-tensin/setup-mingw@v2
-    #   with:
-    #     version: 12.2.0
+    - name: Set up MinGW-w64 (Windows)
+      if: runner.os == 'Windows'
+      uses: egor-tensin/setup-mingw@v2
+      with:
+        version: 12.2.0
 
     - name: Install dependencies
       run: |
@@ -96,11 +98,11 @@ jobs:
       run: |
         ls -la .build/
       shell: bash
+
     - name: Package artifacts (Windows)
       if: runner.os == 'Windows'
       run: |
         cd .build
-        # Nuitka standalone 输出目录为 main.dist
         if (Test-Path "main.dist") {
           Rename-Item -Path "main.dist" -NewName "${{ matrix.platform.artifact_name }}"
           Compress-Archive -Path "${{ matrix.platform.artifact_name }}" -DestinationPath "${{ matrix.platform.artifact_name }}.zip"
