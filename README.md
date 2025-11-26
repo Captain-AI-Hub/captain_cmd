@@ -8,14 +8,6 @@ Captain CMD Tools 是一个基于 LangChain 和 LangGraph 的命令行工具，�
 
 ### 1. config.toml 配置文件
 
-将 mcpServers 配置文件放在 mcp_servers.content 中即可，使用json格式存储，放在这里并不会启用。
-
-* model_config.tool_names 是需要启用的mcp server的名称，需要与 mcp_servers.content 中的 mcpServers 中的 key 一致。
-* model_config.model_name 是模型名称，需要与模型提供商的名称一致。
-* model_config.api_key 是模型API密钥，需要与模型提供商的API密钥一致。
-* model_config.base_url 是模型API地址，需要与模型提供商的API地址一致。
-* model_config.system_prompt 是系统提示词。
-
 ```toml
 [mcp_servers]
 content = '''
@@ -38,8 +30,62 @@ content = '''
 model_name = ""
 api_key = ""
 base_url = ""
-tool_names = ["example-stdio-mcp-name", "example-tcp-mcp-name"]
+# 不要给 major_agent 添加工具, 应该把工具给 sub_agent。
+# tool_names = [] 
 system_prompt = ""
+
+# # LLMToolSelector model (disabled)
+# # create_agent 本身就能让 LLM 决定是否使用工具，额外的选择器会产生冲突
+# LLMToolSelector_model_name = ""
+# LLMToolSelector_api_key = ""
+# LLMToolSelector_base_url = ""
+
+# # Summarization model (disabled)
+# # 现代 LLM 可以自己管理上下文，自动摘要会干扰正常流程 (自动摘要会干扰正常流程)
+# Summarization_model_name = ""
+# Summarization_api_key = ""
+# Summarization_base_url = ""
+
+# # ShellTool model (disabled)
+# # 已经内置了 shell_exec 工具
+# ShellTool_model_name = ""
+# ShellTool_api_key = ""
+# ShellTool_base_url = ""
+# ShellTool_system_prompt = """
+# You are a helpful assistant that executes shell commands
+# """
+
+# VLM Model
+VLM_model_name = ""
+VLM_api_key = ""
+VLM_base_url = ""
+VLM_system_prompt = """
+You are a helpful assistant that uses Vision Language Model to analyze images and text.
+"""
+
+# SubAgent model
+sub_agent = ["sub_agent_1", "sub_agent_2"]
+
+sub_agent_model_config = '''
+{
+    "sub_agent_1": {
+        "model_name": "",
+        "api_key": "",
+        "base_url": "",
+        "system_prompt": "",
+        "tool_names": ["example-stdio-mcp-name", "..."]
+    },
+    "sub_agent_2": {
+        "model_name": "",
+        "api_key": "",
+        "base_url": "",
+        "system_prompt": "",
+        "tool_names": ["example-tcp-mcp-name", "..."]
+    }
+}
+'''
+
+tavily_api_key = ""
 ```
 
 ### 2. 运行命令
