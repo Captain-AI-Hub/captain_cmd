@@ -20,11 +20,6 @@ jobs:
             arch: x64
             artifact_name: captain-cmd-linux-x64
             package_ext: tar.gz
-          - name: macOS x64
-            os: macos-13
-            arch: x64
-            artifact_name: captain-cmd-macos-x64
-            package_ext: tar.gz
           - name: macOS ARM64
             os: macos-latest
             arch: arm64
@@ -163,7 +158,6 @@ jobs:
         files: |
           artifacts/captain-cmd-windows-x64/*.zip
           artifacts/captain-cmd-linux-x64/*.tar.gz
-          artifacts/captain-cmd-macos-x64/*.tar.gz
           artifacts/captain-cmd-macos-arm64/*.tar.gz
         draft: false
         prerelease: false

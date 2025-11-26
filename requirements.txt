@@ -26,4 +26,3 @@ prompt_toolkit==3.0.52
 
 Nuitka==2.8.6
 pyinstaller==6.16.0
-pytest==9.0.1

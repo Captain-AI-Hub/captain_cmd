@@ -21,11 +21,6 @@ jobs:
             arch: x64
             artifact_name: captain-cmd-linux-x64-pyinstaller
             package_ext: tar.gz
-          - name: macOS x64
-            os: macos-13
-            arch: x64
-            artifact_name: captain-cmd-macos-x64-pyinstaller
-            package_ext: tar.gz
           - name: macOS ARM64
             os: macos-latest
             arch: arm64
@@ -37,10 +32,10 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Set up Python ${{ matrix.python-version }}
+    - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: ${{ matrix.python-version }}
+        python-version: '3.13'
         cache: 'pip'
 
     - name: Install dependencies
@@ -120,6 +115,7 @@ jobs:
         fi
       shell: bash
 
+    # 上传构建产物
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
@@ -129,3 +125,30 @@ jobs:
         retention-days: 30
         if-no-files-found: warn
 
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts/
+
+    - name: Display structure of downloaded files
+      run: ls -R artifacts/
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          artifacts/captain-cmd-windows-x64-pyinstaller/*.zip
+          artifacts/captain-cmd-linux-x64-pyinstaller/*.tar.gz
+          artifacts/captain-cmd-macos-arm64-pyinstaller/*.tar.gz
+        draft: false
+        prerelease: false
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
