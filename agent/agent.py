@@ -18,8 +18,7 @@ async def build_sub_agent(
     """build sub agent"""
 
     mcp_tools_list = []
-    
-    # 加载 MCP 工具
+
     for tool_name in mcp_tools if mcp_tools else []:
         try:
             config = json.loads(get_mcp_servers())
@@ -38,10 +37,7 @@ async def build_sub_agent(
             fetched_tools = await mcp_client.get_tools()
             if fetched_tools:
                 mcp_tools_list.extend(fetched_tools)
-                cprint(
-                    f"[build_sub_agent] Loaded {len(fetched_tools)} tools for '{tool_name}'", 
-                    Colors.OKGREEN
-                )
+
         except Exception as e:
             cprint(
                 f"[build_sub_agent] Warning: failed to load MCP tool '{tool_name}': {e}. Continuing...", 

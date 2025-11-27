@@ -44,13 +44,19 @@ system_prompt = ""
 # You are a helpful assistant that executes shell commands
 # """
 
-# VLM Model
-VLM_model_name = ""
-VLM_api_key = ""
-VLM_base_url = ""
-VLM_system_prompt = """
-You are a helpful assistant that uses Vision Language Model to analyze images and text.
-"""
+# # VLM Model (disabled)
+# # 将视觉模型添加到 sub_agent 中并加以描述即可。
+# VLM_model_name = ""
+# VLM_api_key = ""
+# VLM_base_url = ""
+# VLM_system_prompt = """
+# You are a helpful assistant that uses Vision Language Model to analyze images and text.
+# """
+
+# Embedding Model
+embedding_model_name = ""
+embedding_api_key = ""
+embedding_base_url = ""
 
 # SubAgent model
 sub_agent = ["sub_agent_1", "sub_agent_2"]

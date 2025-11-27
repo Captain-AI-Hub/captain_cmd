@@ -1,7 +1,7 @@
 from utils.utils import (
     set_toml_path, get_model_config, 
     set_database_path, get_database_path, 
-    get_local_file_store_path
+    get_local_file_store_path, get_workspace_path
 )
 
 from utils.save_content import save_content
@@ -23,6 +23,9 @@ from prompt_toolkit import PromptSession
 from prompt_toolkit.styles import Style
 from prompt_toolkit.formatted_text import FormattedText
 from collections import OrderedDict
+from pathlib import Path
+from utils.sys_shell import sys_shell
+
 
 async def main():
     """主程序入口"""
@@ -78,8 +81,15 @@ async def main():
     config_table.add_column("Key", style="cyan")
     config_table.add_column("Value", style="green")
     
-    config_table.add_row("Model", model_config['model_name'])
-    config_table.add_row("Workspace", args.workspace)
+    config_table.add_row("Major Model", model_config['model_name'])
+    
+    config_table.add_row("Sub Agents", "")
+    sub_agent_names = model_config.get("sub_agent", [])
+    sub_agent_config = json.loads(model_config.get("sub_agent_model_config", "{}"))
+    for sub_agent_name in sub_agent_names:
+        config_table.add_row(f" -> {sub_agent_name}", sub_agent_config[sub_agent_name]["model_name"])
+
+    config_table.add_row("Workspace", str(Path(get_workspace_path()).resolve()))
     config_table.add_row("CheckpointDB", get_database_path())
     config_table.add_row("StoreDB", get_local_file_store_path())
     
@@ -130,10 +140,34 @@ async def main():
                 if not query_msg:
                     continue
                 
+                # 检查是否是 shell 命令
+                if query_msg.startswith("shell "):
+                    shell_command = query_msg[6:].strip()  # 去掉 "shell " 前缀
+                    if shell_command:
+                        console.print()
+                        result = sys_shell(shell_command)
+                        # 根据结果类型设置样式
+                        if result.startswith("Error:"):
+                            console.print(Panel(
+                                result,
+                                title=f"[bold red]❌ Shell: {shell_command}[/bold red]",
+                                border_style="red",
+                                box=box.SIMPLE
+                            ))
+                        else:
+                            console.print(Panel(
+                                result,
+                                title=f"[bold cyan]🖥️  Shell: {shell_command}[/bold cyan]",
+                                border_style="cyan",
+                                box=box.SIMPLE
+                            ))
+                    else:
+                        console.print("[bold yellow]⚠️  Please provide a command after 'shell'[/bold yellow]")
+                    continue
+                
                 console.print()
                 
                 # 状态管理
-                # tool_states: {tool_id: {"name", "args_str", "status": "pending"|"complete", "result"}}
                 tool_states = OrderedDict()
                 pending_results = {}  # {tool_id: result} - 结果先于 tool_call 到达时缓存
                 thinking_buffer = []

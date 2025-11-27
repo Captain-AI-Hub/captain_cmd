@@ -1,11 +1,11 @@
 import tomllib
 import os
-import platform
-import subprocess
+from pathlib import Path
 
 _toml_path = ""
 _captain_db_path = ""
 _local_file_store_path = ""
+_workspace_path = ""
 
 _major_config = {
     "configurable": {
@@ -60,7 +60,10 @@ def set_database_path(path: str):
     Args:
         path: 工作空间路径
     """
-    base_path = path
+    global _workspace_path
+    _workspace_path = path
+    
+    base_path = Path(_workspace_path).resolve()
     db_path = os.path.join(base_path, ".captain", "checkpoint.db")
     if not os.path.exists(db_path):
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
@@ -92,6 +95,14 @@ def get_local_file_store_path():
         local_file_store_path: 本地文件存储路径
     """
     return _local_file_store_path
+
+def get_workspace_path():
+    """
+    获取工作空间路径
+    Returns:
+        workspace_path: 工作空间路径
+    """
+    return _workspace_path
 
 class Colors:
     """ANSI颜色代码"""

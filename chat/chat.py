@@ -1,13 +1,11 @@
 from langchain.agents import create_agent
 from langchain.chat_models import init_chat_model
-from langchain_mcp_adapters.client import MultiServerMCPClient
 from agent.agent import build_sub_agent
 from tools.shell_exec import shell_exec
 from tools.web_search import internet_search
 import json
 from typing import Optional, Any, AsyncGenerator, cast
 from langchain_core.messages import HumanMessage
-import os
 from pathlib import Path
 from utils.utils import (
     cprint, Colors,
@@ -32,8 +30,6 @@ from deepagents.backends import (
     FilesystemBackend
 )
 
-from langgraph.checkpoint.memory import InMemorySaver
-from langgraph.store.memory import InMemoryStore
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.store.sqlite.aio import AsyncSqliteStore
 import aiosqlite
@@ -41,9 +37,6 @@ import aiosqlite
 _store = None
 _checkpoint = None
 _major_agent = None
-
-memory_store = InMemoryStore()
-memory_checkpoint = InMemorySaver()
 
 async def init_resources():
     """初始化数据库连接"""
@@ -61,8 +54,6 @@ async def init_resources():
         # 初始化数据库模式
         await _store.setup()
         await _checkpoint.setup()
-        
-        cprint("[init_resources] Database resources initialized", Colors.OKGREEN)
         return True
     except Exception as e:
         cprint(f"[init_resources] Failed to initialize resources: {e}", Colors.FAIL)
@@ -95,10 +86,6 @@ async def build_agent(
             mcp_tools=sub_agent_config["tool_names"],
         )
         if agent is not None:
-            cprint(
-                f"[build_agent] Sub agent '{sub_agent_name}' built successfully", 
-                Colors.OKGREEN
-            )
             sub_agent.append(
                 CompiledSubAgent(
                     name=sub_agent_name,
@@ -120,11 +107,6 @@ async def build_agent(
             api_key=api_key
         )
                 
-        cprint(
-            f"[build_agent] Initialized major model '{model_name}'", 
-            Colors.OKGREEN
-        )
-        
         # 确保资源已初始化
         if _store is None or _checkpoint is None:
             if not await init_resources():
@@ -133,9 +115,9 @@ async def build_agent(
         # 创建代理
         agent = create_agent(
             model=model,
-            checkpointer=_checkpoint,
             tools=[shell_exec, internet_search],
             store=_store,
+            checkpointer=_checkpoint,
             system_prompt=system_prompt,
             middleware=[
                 TodoListMiddleware(),
@@ -170,7 +152,6 @@ async def build_agent(
 
 async def process_agent(agent: Any, message: str):
     """处理代理流式输出"""
-    
     try:
         messages = [HumanMessage(content=message)]
         async for stream_mode, chunk in agent.astream(

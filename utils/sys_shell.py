@@ -1,9 +1,6 @@
-from langchain.tools import tool
 import subprocess
 import sys
 import locale
-from typing import Annotated
-from pydantic import Field
 from utils.utils import get_workspace_path
 from pathlib import Path
 
@@ -18,9 +15,8 @@ def _get_shell_encoding() -> str:
             return locale.getpreferredencoding(False)
     return 'utf-8'
 
-@tool(description="Execute a shell command and return the output")
-def shell_exec(
-    command: Annotated[str, Field(description="The shell command to execute")]
+def sys_shell(
+    command: str
 ) -> str:
     try:
         encoding = _get_shell_encoding()

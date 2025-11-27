@@ -305,3 +305,34 @@ Do you want to exit? (y/n):
 [cleanup] Store connection closed
 [cleanup] Checkpoint connection closed
 ```
+
+### 3. 支持的命令
+
+shell 命令：用于执行shell命令，例如：`shell ls` 或 `shell pwd`。
+
+```bash
+> shell ls
+
+                                    🖥️  Shell: ls                                                        
+
+  agent
+  build_with_nuitka.py
+  build_with_pyinstaller.py
+  chat
+  config.example.toml
+  config.toml
+  main.py
+  out.md
+  README.md
+  requirements.txt
+  test.py
+  tools
+  utils
+```
+
+exit 命令：用于退出程序，例如：`exit`。
+
+```text
+> exit
+👋 Goodbye!
+```

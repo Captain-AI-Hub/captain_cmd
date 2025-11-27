@@ -31,4 +31,3 @@ def internet_search(
         include_answer=include_answer,
         topic=topic,
     )
-
