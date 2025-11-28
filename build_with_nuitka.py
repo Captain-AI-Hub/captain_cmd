@@ -4,7 +4,6 @@ import shutil
 import platform
 import subprocess
 
-# 设置标准输出为 UTF-8（Windows 兼容性）
 if sys.platform == "win32":
     try:
         sys.stdout.reconfigure(encoding='utf-8')  # type: ignore
@@ -15,7 +14,7 @@ if sys.platform == "win32":
 def clean():
     """清理之前的构建文件"""
     print("[*] Cleaning up previous builds...")
-    dirs_to_remove = [".build", "build", "main.build", "main.dist", "main.onefile-build"]
+    dirs_to_remove = [".build", "build", "main.build", "main.dist", "main.onefile-build", "captain.build", "captain.dist", "captain.onefile-build"]
     for d in dirs_to_remove:
         if os.path.exists(d):
             try:
@@ -72,10 +71,10 @@ def build():
         # "--onefile",              # 打包成单文件
         "--assume-yes-for-downloads", # 自动下载必要的编译器/依赖
         f"--output-dir={output_dir}", # 输出目录
+        "--output-filename=captain",  # 指定输出可执行文件名为 captain
         "--remove-output",        # 构建后删除临时文件
         "--show-progress",        # 显示进度条
         "--show-memory",          # 显示内存使用
-        "--disable-ccache",       # 禁用 ccache/clcache (避免缓存导致的问题)
         
         # ====== 让 Nuitka 自动追踪所有导入 ======
         "--follow-imports",       # 跟踪所有导入（这是关键！）
@@ -99,18 +98,17 @@ def build():
         "--include-package=langgraph",
         "--include-package=deepagents",
         "--include-package=langchain_community",
-        "--include-package=langchain-google-genai",
-        "--include-package=langchain-mistralai",
-        "--include-package=langchain-huggingface",
-        "--include-package=langchain-xai",
         
         # 手动包含 LangChain 动态加载的扩展（通过配置字符串加载，静态分析无法追踪）
         "--include-package=langchain_deepseek",
         "--include-package=langchain_openai",
         "--include-package=langchain_ollama",
-        "--include-package=langchain_gemini",
         "--include-package=langchain_anthropic",
         "--include-package=langchain_groq",
+        "--include-package=langchain_google_genai",
+        "--include-package=langchain_mistralai",
+        "--include-package=langchain_huggingface",
+        "--include-package=langchain_xai",
         
         # 包含 MCP 相关包（可能也使用动态导入）
         "--include-package=mcp",
@@ -163,7 +161,7 @@ def post_build():
     print("[*] Running post-build tasks...")
     
     # 在 standalone 模式下，Nuitka 会创建一个 .dist 文件夹
-    # 例如 main.py -> main.dist
+    # 目录名基于入口文件名（main.py），所以会创建 main.dist
     # 但在 macOS 上使用 --macos-create-app-bundle 时会创建 main.app
     system = platform.system()
     dist_dir = None
@@ -239,4 +237,3 @@ if __name__ == "__main__":
     clean()
     build()
     post_build()
-

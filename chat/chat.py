@@ -10,7 +10,8 @@ from pathlib import Path
 from utils.utils import (
     cprint, Colors,
     get_database_path, get_local_file_store_path,
-    get_major_config, get_model_config
+    get_major_config, get_model_config,
+    get_major_agent_config, get_sub_agents_config
 )
 from tools.utils import ErrorHandlingMiddleware
 
@@ -70,27 +71,18 @@ async def build_agent(
     
     global _store, _checkpoint, _major_agent, _llm_tool_selector_model, _summarization_model
     
-    model_config = get_model_config()
-    if model_config == "Error: toml_path is None":
-        raise RuntimeError("Failed to load model config")
+    # 获取 sub agents 配置 (新的 TOML 格式)
+    sub_agents_config = get_sub_agents_config()
        
     sub_agent = []
-    sub_agent_model_config = json.loads(model_config.get("sub_agent_model_config", "{}"))
-    for sub_agent_name in model_config.get("sub_agent", []):
-        sub_agent_config = sub_agent_model_config[sub_agent_name]
+    for sub_agent_name, sub_agent_config in sub_agents_config.items():
         try:
-            model_name = sub_agent_config["model_name"]
-            base_url = sub_agent_config["base_url"]
-            api_key = sub_agent_config["api_key"]
-            system_prompt = sub_agent_config["system_prompt"]
-            try:
-                mcp_tools = sub_agent_config["mcp_tools"]
-            except Exception as e:
-                mcp_tools = []
-            try:
-                inside_tools = sub_agent_config["inside_tools"]
-            except Exception as e:
-                inside_tools = []
+            sub_model_name = sub_agent_config["model_name"]
+            sub_base_url = sub_agent_config["base_url"]
+            sub_api_key = sub_agent_config["api_key"]
+            sub_system_prompt = sub_agent_config.get("system_prompt", "")
+            mcp_tools = sub_agent_config.get("mcp_tools", [])
+            inside_tools = sub_agent_config.get("inside_tools", [])
         except Exception as e:
             cprint(
                 f"[build_agent] Sub agent '{sub_agent_name}' config error: {e}", 
@@ -99,10 +91,10 @@ async def build_agent(
             continue
 
         agent = await build_sub_agent(
-            model_name=model_name,
-            base_url=base_url,
-            api_key=api_key,
-            system_prompt=system_prompt,
+            model_name=sub_model_name,
+            base_url=sub_base_url,
+            api_key=sub_api_key,
+            system_prompt=sub_system_prompt,
             mcp_tools=mcp_tools,
             inside_tools=inside_tools,
         )
@@ -110,7 +102,7 @@ async def build_agent(
             sub_agent.append(
                 CompiledSubAgent(
                     name=sub_agent_name,
-                    description=sub_agent_config["description"],
+                    description=sub_agent_config.get("description", ""),
                     runnable=agent
                 )
             )

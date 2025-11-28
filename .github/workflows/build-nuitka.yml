@@ -16,17 +16,17 @@ jobs:
           - name: Windows x64
             os: windows-latest
             arch: x64
-            artifact_name: captain-cmd-windows-x64
+            artifact_name: captain-windows-x64
             package_ext: zip
           - name: Linux x64
             os: ubuntu-latest
             arch: x64
-            artifact_name: captain-cmd-linux-x64
+            artifact_name: captain-linux-x64
             package_ext: tar.gz
           - name: macOS ARM64
             os: macos-latest
             arch: arm64
-            artifact_name: captain-cmd-macos-arm64
+            artifact_name: captain-macos-arm64
             package_ext: tar.gz
         python-version: ['3.13']
       fail-fast: false
@@ -160,9 +160,8 @@ jobs:
       uses: softprops/action-gh-release@v2
       with:
         files: |
-          artifacts/captain-cmd-windows-x64/*.zip
-          artifacts/captain-cmd-linux-x64/*.tar.gz
-          artifacts/captain-cmd-macos-arm64/*.tar.gz
+          artifacts/**/*.zip
+          artifacts/**/*.tar.gz
         draft: false
         prerelease: false
         generate_release_notes: true

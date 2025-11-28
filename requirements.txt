@@ -15,7 +15,6 @@ langchain-huggingface==1.1.0
 langchain-xai==1.1.0
 
 langchain-mcp-adapters==0.1.14
-mcp==1.22.0
 mcp[cli]==1.22.0
 tavily-python==0.7.13
 langgraph-checkpoint-sqlite==3.0.0

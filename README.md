@@ -15,8 +15,8 @@ content = '''
     "mcpServers": {
         "example-stdio-mcp-name": {
             "transport": "stdio", 
-            "command": "python.exe", 
-            "args": ["path/to/example_mcp.py"]
+            "command": "uv/npx", 
+            "args": ["script"]
         },
         "example-tcp-mcp-name": {
             "transport": "streamable_http",
@@ -26,37 +26,49 @@ content = '''
 }
 '''
 
+# Major Agent and Sub Agents
+# don't add tools to major agent, add tools to sub agents.
 [model_config]
-model_name = ""
-api_key = ""
-base_url = ""
-system_prompt = ""
+[model_config.major_agent]
+    model_name = ""
+    api_key = ""
+    base_url = ""
+    system_prompt = '''
+    '''
+[model_config.sub_agent_1]
+    model_name = ""
+    api_key = ""
+    base_url = ""
+    system_prompt = '''
+    '''
+    mcp_tools = ["example-stdio-mcp-name", "..."]
+    inside_tools = ["..."]
+[model_config.sub_agent_2]
+    model_name = ""
+    api_key = ""
+    base_url = ""
+    system_prompt = '''
+    '''
+    mcp_tools = ["example-tcp-mcp-name", "..."]
+    inside_tools = ["..."]
 
-# SubAgent model
-sub_agent = ["sub_agent_1", "sub_agent_2"]
+# Tavily API Key
+[tavily_config]
+tavily_api_key = ""
 
-sub_agent_model_config = '''
-{
-    "sub_agent_1": {
-        "model_name": "",
-        "api_key": "",
-        "base_url": "",
-        "system_prompt": "",
-        "mcp_tools": ["example-stdio-mcp-name", "..."]
-        "inside_tools": [...]
-    },
-    "sub_agent_2": {
-        "model_name": "",
-        "api_key": "",
-        "base_url": "",
-        "system_prompt": "",
-        "mcp_tools": ["example-tcp-mcp-name", "..."]
-        "inside_tools": [...]
-    }
-}
+# Prompt Templates
+[prompt_templates]
+
+[prompt_templates.init]
+prompt = '''
+
 '''
 
-tavily_api_key = ""
+[prompt_templates.example]
+args = ["example_arg1", "example_arg2"]
+prompt = '''
+use {example_arg1} and {example_arg2} to ...
+'''
 ```
 
 inside_tools 是内部编写的工具默认不传给子 agent。目前有的 inside_tools:
@@ -593,4 +605,26 @@ exit 命令：用于退出程序，例如：`exit`。
 ```text
 > exit
 👋 Goodbye!
+```
+
+### 4. 自定义命令支持
+
+```toml
+# Prompt Templates
+[prompt_templates]
+
+[prompt_templates.init]
+prompt = '''
+
+'''
+
+[prompt_templates.example]
+args = ["example_arg1", "example_arg2"]
+prompt = '''
+use {example_arg1} and {example_arg2} to ...
+'''
+```
+
+```bash
+> example example_arg1="" example_arg2=""
 ```

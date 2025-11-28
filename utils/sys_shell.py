@@ -3,6 +3,7 @@ import sys
 import locale
 from utils.utils import get_workspace_path
 from pathlib import Path
+from typing import Optional, Tuple
 
 def _get_shell_encoding() -> str:
     """Get the appropriate encoding for shell output."""
@@ -40,3 +41,36 @@ def sys_shell(
         return f"Error: {e.stderr}"
     except Exception as e:
         return f"Error: {str(e)}"
+
+def parse_shell_command(query: str) -> Tuple[bool, Optional[str]]:
+    """
+    解析是否为 shell 命令
+    Args:
+        query: 用户输入的查询字符串
+    Returns:
+        (is_shell_cmd, shell_command): 是否是 shell 命令，以及实际的命令
+    """
+    if query.startswith("shell "):
+        command = query[6:].strip()
+        return True, command if command else None
+    return False, None
+
+def execute_shell_command(command: str) -> dict:
+    """
+    执行 shell 命令并返回结构化结果
+    Args:
+        command: shell 命令
+    Returns:
+        {
+            "success": bool,
+            "command": str,
+            "output": str
+        }
+    """
+    result = sys_shell(command)
+    is_error = result.startswith("Error:")
+    return {
+        "success": not is_error,
+        "command": command,
+        "output": result
+    }

@@ -15,41 +15,46 @@ content = '''
 }
 '''
 
+# Major Agent and Sub Agents
+# don't add tools to major agent, add tools to sub agents.
 [model_config]
-model_name = ""
-api_key = ""
-base_url = ""
-# 不要给 major_agent 添加工具, 应该把工具给 sub_agent。
-# tool_names = [] 
-system_prompt = ""
+[model_config.major_agent]
+    model_name = ""
+    api_key = ""
+    base_url = ""
+    system_prompt = '''
+    '''
+[model_config.sub_agent_1]
+    model_name = ""
+    api_key = ""
+    base_url = ""
+    system_prompt = '''
+    '''
+    mcp_tools = ["example-stdio-mcp-name", "..."]
+    inside_tools = ["..."]
+[model_config.sub_agent_2]
+    model_name = ""
+    api_key = ""
+    base_url = ""
+    system_prompt = '''
+    '''
+    mcp_tools = ["example-tcp-mcp-name", "..."]
+    inside_tools = ["..."]
 
-# Embedding Model
-embedding_model_name = ""
-embedding_api_key = ""
-embedding_base_url = ""
+# Tavily API Key
+[tavily_config]
+tavily_api_key = ""
 
-# SubAgent model
-sub_agent = ["sub_agent_1", "sub_agent_2"]
-# inside_tools: shell_exec, internet_search (need tavily api key)
-sub_agent_model_config = '''
-{
-    "sub_agent_1": {
-        "model_name": "",
-        "api_key": "",
-        "base_url": "",
-        "system_prompt": "",
-        "mcp_tools": ["example-stdio-mcp-name", "..."],
-        "inside_tools": [...]
-    },
-    "sub_agent_2": {
-        "model_name": "",
-        "api_key": "",
-        "base_url": "",
-        "system_prompt": "",
-        "mcp_tools": ["example-tcp-mcp-name", "..."],
-        "inside_tools": [...]
-    }
-}
+# Prompt Templates
+[prompt_templates]
+
+[prompt_templates.init]
+prompt = '''
+
 '''
 
-tavily_api_key = ""
+[prompt_templates.example]
+args = ["example_arg1", "example_arg2"]
+prompt = '''
+use {example_arg1} and {example_arg2} to ...
+'''

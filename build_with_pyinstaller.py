@@ -13,7 +13,7 @@ if sys.platform == "win32":
 
         sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
 
-APP_NAME = "captain_cmd"
+APP_NAME = "captain"
 OUTPUT_DIR = ".build"
 WORK_DIR = os.path.join(OUTPUT_DIR, "pyinstaller-work")
 SPEC_DIR = OUTPUT_DIR
@@ -34,14 +34,13 @@ COLLECT_ALL_PACKAGES = [
     "langchain_deepseek",
     "langchain_openai",
     "langchain_ollama",
-    "langchain_gemini",
     "langchain_anthropic",
     "langchain_groq",
     "langchain_mcp_adapters",
-    "langchain-google-genai",
-    "langchain-mistralai",
-    "langchain-huggingface",
-    "langchain-xai",
+    "langchain_google_genai",
+    "langchain_mistralai",
+    "langchain_huggingface",
+    "langchain_xai",
     # 其他依赖
     "mcp",
     "pydantic",
@@ -66,6 +65,8 @@ def clean() -> None:
         "dist",
         "main.dist",
         "main.app",
+        "captain.dist",
+        "captain.app",
     ]
 
     for path in paths:
@@ -131,13 +132,13 @@ def build() -> Optional[str]:
 
 def normalize_output_directory() -> Optional[str]:
     """
-    PyInstaller 默认输出 captain_cmd 或 captain_cmd.app，
-    这里统一重命名为 main.dist/main.app 以兼容已有流程。
+    PyInstaller 默认输出 captain 或 captain.app，
+    这里统一重命名为 captain.dist/captain.app。
     """
     app_bundle_src = os.path.join(OUTPUT_DIR, f"{APP_NAME}.app")
     folder_src = os.path.join(OUTPUT_DIR, APP_NAME)
-    app_target = os.path.join(OUTPUT_DIR, "main.app")
-    folder_target = os.path.join(OUTPUT_DIR, "main.dist")
+    app_target = os.path.join(OUTPUT_DIR, "captain.app")
+    folder_target = os.path.join(OUTPUT_DIR, "captain.dist")
 
     if os.path.exists(app_bundle_src):
         _replace_path(app_target)

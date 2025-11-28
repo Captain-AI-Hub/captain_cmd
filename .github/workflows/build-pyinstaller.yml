@@ -17,17 +17,17 @@ jobs:
           - name: Windows x64
             os: windows-latest
             arch: x64
-            artifact_name: captain-cmd-windows-x64-pyinstaller
+            artifact_name: captain-windows-x64
             package_ext: zip
           - name: Linux x64
             os: ubuntu-latest
             arch: x64
-            artifact_name: captain-cmd-linux-x64-pyinstaller
+            artifact_name: captain-linux-x64
             package_ext: tar.gz
           - name: macOS ARM64
             os: macos-latest
             arch: arm64
-            artifact_name: captain-cmd-macos-arm64-pyinstaller
+            artifact_name: captain-macos-arm64
             package_ext: tar.gz
         python-version: ['3.13']
 
@@ -86,11 +86,11 @@ jobs:
       if: runner.os == 'Windows'
       run: |
         cd .build
-        if (Test-Path "main.dist") {
-          Rename-Item -Path "main.dist" -NewName "${{ matrix.platform.artifact_name }}"
+        if (Test-Path "captain.dist") {
+          Rename-Item -Path "captain.dist" -NewName "${{ matrix.platform.artifact_name }}"
           Compress-Archive -Path "${{ matrix.platform.artifact_name }}" -DestinationPath "${{ matrix.platform.artifact_name }}.zip"
-        } elseif (Test-Path "main.app") {
-          Rename-Item -Path "main.app" -NewName "${{ matrix.platform.artifact_name }}"
+        } elseif (Test-Path "captain.app") {
+          Rename-Item -Path "captain.app" -NewName "${{ matrix.platform.artifact_name }}"
           Compress-Archive -Path "${{ matrix.platform.artifact_name }}" -DestinationPath "${{ matrix.platform.artifact_name }}.zip"
         }
       shell: pwsh
@@ -99,8 +99,8 @@ jobs:
       if: runner.os == 'Linux'
       run: |
         cd .build
-        if [ -d "main.dist" ]; then
-          mv main.dist ${{ matrix.platform.artifact_name }}
+        if [ -d "captain.dist" ]; then
+          mv captain.dist ${{ matrix.platform.artifact_name }}
           tar -czf ${{ matrix.platform.artifact_name }}.tar.gz ${{ matrix.platform.artifact_name }}
         fi
       shell: bash
@@ -109,11 +109,11 @@ jobs:
       if: runner.os == 'macOS'
       run: |
         cd .build
-        if [ -d "main.app" ]; then
-          mv main.app ${{ matrix.platform.artifact_name }}
+        if [ -d "captain.app" ]; then
+          mv captain.app ${{ matrix.platform.artifact_name }}
           tar -czf ${{ matrix.platform.artifact_name }}.tar.gz ${{ matrix.platform.artifact_name }}
-        elif [ -d "main.dist" ]; then
-          mv main.dist ${{ matrix.platform.artifact_name }}
+        elif [ -d "captain.dist" ]; then
+          mv captain.dist ${{ matrix.platform.artifact_name }}
           tar -czf ${{ matrix.platform.artifact_name }}.tar.gz ${{ matrix.platform.artifact_name }}
         fi
       shell: bash
@@ -149,9 +149,8 @@ jobs:
       uses: softprops/action-gh-release@v2
       with:
         files: |
-          artifacts/captain-cmd-windows-x64-pyinstaller/*.zip
-          artifacts/captain-cmd-linux-x64-pyinstaller/*.tar.gz
-          artifacts/captain-cmd-macos-arm64-pyinstaller/*.tar.gz
+          artifacts/**/*.zip
+          artifacts/**/*.tar.gz
         draft: false
         prerelease: false
         generate_release_notes: true

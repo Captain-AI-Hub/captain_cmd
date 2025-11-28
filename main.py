@@ -1,7 +1,9 @@
 from utils.utils import (
     set_toml_path, get_model_config, 
     set_database_path, get_database_path, 
-    get_local_file_store_path, get_workspace_path
+    get_local_file_store_path, get_workspace_path,
+    get_major_agent_config, get_sub_agents_config,
+    get_prompt, list_prompt_templates
 )
 
 from utils.save_content import save_content
@@ -19,12 +21,12 @@ from rich.live import Live
 from rich.table import Table
 from rich.text import Text
 from rich import box
-from prompt_toolkit import PromptSession
-from prompt_toolkit.styles import Style
 from prompt_toolkit.formatted_text import FormattedText
+from prompt_toolkit.styles import Style
+from utils.shell_prompt import CaptainShell
 from collections import OrderedDict
 from pathlib import Path
-from utils.sys_shell import sys_shell
+from utils.sys_shell import parse_shell_command, execute_shell_command
 
 async def main():
     """主程序入口"""
@@ -34,14 +36,14 @@ async def main():
         "--config", 
         type=str, 
         default="config.toml", 
-        required=True, 
+        required=False, 
         help="Path to config file"
     )
     parser.add_argument(
         "--workspace", 
         type=str, 
-        default="workspace", 
-        required=True, 
+        default=".", 
+        required=False, 
         help="Path to workspace directory"
     )
     parser.add_argument(
@@ -56,18 +58,21 @@ async def main():
     # 创建 Rich Console
     console = Console()
 
-    # 创建 Prompt Session
-    session = PromptSession()
-    prompt_style = Style.from_dict({
-        "prompt": "bold blue",
-    })
+    # 创建 Captain Shell (带历史记录和补全)
+    shell = CaptainShell()
 
     # 初始化配置
     set_toml_path(args.config)
-    model_config = get_model_config()
+    config = get_model_config()
     
-    if model_config == "Error: toml_path is None":
-        console.print(f"[bold red]❌ Failed to load model config: {model_config}[/bold red]")
+    if config == "Error: toml_path is None":
+        console.print(f"[bold red]❌ Failed to load model config: {config}[/bold red]")
+        sys.exit(1)
+    
+    # 获取 major agent 配置
+    major_agent_config = get_major_agent_config()
+    if major_agent_config is None:
+        console.print("[bold red]❌ Failed to load major agent config[/bold red]")
         sys.exit(1)
     
     set_database_path(args.workspace)
@@ -80,13 +85,12 @@ async def main():
     config_table.add_column("Key", style="cyan")
     config_table.add_column("Value", style="green")
     
-    config_table.add_row("Major Model", model_config['model_name'])
+    config_table.add_row("Major Model", major_agent_config['model_name'])
     
     config_table.add_row("Sub Agents", "")
-    sub_agent_names = model_config.get("sub_agent", [])
-    sub_agent_config = json.loads(model_config.get("sub_agent_model_config", "{}"))
-    for sub_agent_name in sub_agent_names:
-        config_table.add_row(f" -> {sub_agent_name}", sub_agent_config[sub_agent_name]["model_name"])
+    sub_agents_config = get_sub_agents_config()
+    for sub_agent_name, sub_agent_cfg in sub_agents_config.items():
+        config_table.add_row(f" -> {sub_agent_name}", sub_agent_cfg.get("model_name", ""))
 
     config_table.add_row("Workspace", str(Path(get_workspace_path()).resolve()))
     config_table.add_row("CheckpointDB", get_database_path())
@@ -124,10 +128,7 @@ async def main():
         while True:
             try:
                 # 获取用户输入
-                query_msg = await session.prompt_async(
-                    FormattedText([('', '\n'), ('class:prompt', '> ')]), 
-                    style=prompt_style
-                )
+                query_msg = await shell.prompt_async()
                 query_msg = query_msg.strip()
                 
                 # 检查退出命令
@@ -140,30 +141,69 @@ async def main():
                     continue
                 
                 # 检查是否是 shell 命令
-                if query_msg.startswith("shell "):
-                    shell_command = query_msg[6:].strip()  # 去掉 "shell " 前缀
+                is_shell, shell_command = parse_shell_command(query_msg)
+                if is_shell:
                     if shell_command:
                         console.print()
-                        result = sys_shell(shell_command)
-                        # 根据结果类型设置样式
-                        if result.startswith("Error:"):
+                        result = execute_shell_command(shell_command)
+                        if result["success"]:
                             console.print(Panel(
-                                result,
-                                title=f"[bold red]❌ Shell: {shell_command}[/bold red]",
-                                border_style="red",
+                                result["output"],
+                                title=f"[bold cyan]🖥️  Shell: {result['command']}[/bold cyan]",
+                                border_style="cyan",
                                 box=box.SIMPLE
                             ))
                         else:
                             console.print(Panel(
-                                result,
-                                title=f"[bold cyan]🖥️  Shell: {shell_command}[/bold cyan]",
-                                border_style="cyan",
+                                result["output"],
+                                title=f"[bold red]❌ Shell: {result['command']}[/bold red]",
+                                border_style="red",
                                 box=box.SIMPLE
                             ))
                     else:
                         console.print("[bold yellow]⚠️  Please provide a command after 'shell'[/bold yellow]")
                     continue
                 
+                # 检查是否是 prompt 模板命令
+                if query_msg.startswith("/"):
+                    prompt_cmd = query_msg[1:].strip()  # 去掉 "/" 前缀
+                    
+                    # /list 列出所有模板
+                    if prompt_cmd == "list":
+                        console.print()
+                        templates = list_prompt_templates()
+                        if templates:
+                            table = Table(title="Prompt Templates", box=box.SIMPLE)
+                            table.add_column("Name", style="cyan")
+                            table.add_column("Args", style="yellow")
+                            table.add_column("Preview", style="dim")
+                            for name, info in templates.items():
+                                args_str = ", ".join(info["args"]) if info["args"] else "-"
+                                table.add_row(name, args_str, info["prompt_preview"])
+                            console.print(table)
+                        else:
+                            console.print("[bold yellow]⚠️  No prompt templates found[/bold yellow]")
+                        continue
+                    
+                    # 解析 prompt 模板
+                    result = get_prompt(prompt_cmd)
+                    if result is None:
+                        console.print(f"[bold yellow]⚠️  Unknown template: {prompt_cmd.split()[0]}[/bold yellow]")
+                        console.print("[dim]Use /list to see available templates[/dim]")
+                        continue
+                    elif result.startswith("Error:"):
+                        console.print(f"[bold red]❌ {result}[/bold red]")
+                        continue
+                    
+                    # 将解析后的 prompt 作为查询消息
+                    query_msg = result
+                    console.print(Panel(
+                        query_msg,
+                        title=f"[bold magenta]📝 Prompt: {prompt_cmd.split()[0]}[/bold magenta]",
+                        border_style="magenta",
+                        box=box.SIMPLE
+                    ))
+
                 console.print()
                 
                 # 状态管理
@@ -254,10 +294,10 @@ async def main():
 
                 # 流式处理响应
                 async for response in ChatStream( # type: ignore
-                    model_name=model_config["model_name"],
-                    base_url=model_config["base_url"],
-                    api_key=model_config["api_key"],
-                    system_prompt=model_config["system_prompt"],
+                    model_name=major_agent_config["model_name"],
+                    base_url=major_agent_config["base_url"],
+                    api_key=major_agent_config["api_key"],
+                    system_prompt=major_agent_config.get("system_prompt", ""),
                     human_message=query_msg,
                     workspace_path=args.workspace
                 ):
@@ -458,7 +498,7 @@ async def main():
                 console.print("\n\n[bold yellow]⚠️  Interrupted by user (Press Ctrl+C again to exit)[/bold yellow]")
                 # 询问是否真的要退出
                 try:
-                    confirm = await session.prompt_async(
+                    confirm = await shell.session.prompt_async(
                         FormattedText([('class:prompt', 'Do you want to exit? (y/n): ')]),
                         style=Style.from_dict({"prompt": "yellow"})
                     )

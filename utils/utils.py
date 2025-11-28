@@ -1,6 +1,8 @@
 import tomllib
 import os
+import re
 from pathlib import Path
+from typing import Optional, Tuple
 
 _toml_path = ""
 _captain_db_path = ""
@@ -44,15 +46,147 @@ def get_mcp_servers():
 
 def get_model_config():
     """
-    获取模型配置
+    获取完整的 TOML 配置
     Returns:
-        model_config: 模型配置
+        config: 完整配置字典
     """
     if not _toml_path:
         return "Error: toml_path is None"
     with open(_toml_path, "rb") as f:
         config = tomllib.load(f)
-    return config["model_config"]
+    return config
+
+def get_major_agent_config():
+    """
+    获取 major agent 配置
+    Returns:
+        major_agent_config: major agent 配置字典
+    """
+    config = get_model_config()
+    if config == "Error: toml_path is None":
+        return None
+    return config.get("model_config", {}).get("major_agent")
+
+def get_sub_agents_config():
+    """
+    获取所有 sub agent 配置
+    Returns:
+        sub_agents: {agent_name: agent_config} 字典
+    """
+    config = get_model_config()
+    if config == "Error: toml_path is None":
+        return {}
+    
+    model_config = config.get("model_config", {})
+    return {k: v for k, v in model_config.items() if k != "major_agent"}
+
+def get_tavily_api_key():
+    """
+    获取 Tavily API Key
+    Returns:
+        tavily_api_key: Tavily API Key
+    """
+    config = get_model_config()
+    if config == "Error: toml_path is None":
+        return None
+    tavily_config = config.get("tavily_config", {})
+    return tavily_config.get("tavily_api_key", "")
+
+def get_prompt_templates():
+    """
+    获取所有 prompt templates
+    Returns:
+        prompt_templates: {template_name: template_config} 字典
+    """
+    config = get_model_config()
+    if config == "Error: toml_path is None":
+        return {}
+    return config.get("prompt_templates", {})
+
+def parse_prompt_command(command: str) -> Tuple[Optional[str], dict]:
+    """
+    解析 prompt 命令
+    示例:
+        "init" -> ("init", {})
+        "audit file=\"test.c\"" -> ("audit", {"file": "test.c"})
+        "example arg1=\"val1\" arg2=\"val2\"" -> ("example", {"arg1": "val1", "arg2": "val2"})
+    
+    Args:
+        command: 用户输入的命令字符串
+    Returns:
+        (template_name, args_dict): 模板名称和参数字典
+    """
+    if not command or not command.strip():
+        return None, {}
+    
+    parts = command.strip().split(maxsplit=1)
+    template_name = parts[0]
+    args_dict = {}
+    
+    if len(parts) > 1:
+        args_str = parts[1]
+        # 匹配 key="value" 或 key='value' 格式
+        pattern = r'(\w+)\s*=\s*["\']([^"\']*)["\']'
+        matches = re.findall(pattern, args_str)
+        for key, value in matches:
+            args_dict[key] = value
+    
+    return template_name, args_dict
+
+def get_prompt(command: str) -> Optional[str]:
+    """
+    根据命令获取并处理 prompt
+    示例:
+        get_prompt("init") -> "Review the current directory..."
+        get_prompt("audit file=\"test.c\"") -> "Carefully audit test.c to identify..."
+    
+    Args:
+        command: 用户输入的命令字符串
+    Returns:
+        处理后的 prompt 字符串，如果模板不存在则返回 None
+    """
+    template_name, args_dict = parse_prompt_command(command)
+    if template_name is None:
+        return None
+    
+    templates = get_prompt_templates()
+    template = templates.get(template_name)
+    
+    if template is None:
+        return None
+    
+    prompt = template.get("prompt", "")
+    required_args = template.get("args", [])
+    
+    # 检查是否提供了所有必需参数
+    missing_args = [arg for arg in required_args if arg not in args_dict]
+    if missing_args:
+        return f"Error: Missing required arguments: {', '.join(missing_args)}"
+    
+    # 替换 prompt 中的占位符
+    for key, value in args_dict.items():
+        prompt = prompt.replace(f"{{{key}}}", value)
+    
+    return prompt.strip()
+
+def list_prompt_templates() -> dict:
+    """
+    列出所有可用的 prompt templates 及其参数
+    Returns:
+        {template_name: {"args": [...], "prompt_preview": "..."}} 字典
+    """
+    templates = get_prompt_templates()
+    result = {}
+    for name, config in templates.items():
+        args = config.get("args", [])
+        prompt = config.get("prompt", "")
+        # 截取前 50 个字符作为预览
+        preview = prompt.strip()[:50] + "..." if len(prompt.strip()) > 50 else prompt.strip()
+        result[name] = {
+            "args": args,
+            "prompt_preview": preview
+        }
+    return result
 
 def set_database_path(path: str):
     """
