@@ -73,15 +73,10 @@ async def build_sub_agent(
             middleware=[
                 TodoListMiddleware(),
                 FilesystemMiddleware(
-                    backend=lambda rt: CompositeBackend(
-                        default=FilesystemBackend(
-                                root_dir=Path(get_workspace_path()).resolve(), 
-                                virtual_mode=True
-                        ),
-                        routes={
-                            "/memories/": StoreBackend(rt),
-                        }
-                    ),
+                    backend=FilesystemBackend(
+                        root_dir=Path(get_workspace_path()).resolve(), 
+                        virtual_mode=True
+                    )
                 ),
                 ErrorHandlingMiddleware(),
             ]
