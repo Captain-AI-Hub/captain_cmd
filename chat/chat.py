@@ -35,6 +35,8 @@ from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.store.sqlite.aio import AsyncSqliteStore
 import aiosqlite
 
+from tools.mod_vector import store_markdown, search_vectors, list_collections
+
 _store = None
 _checkpoint = None
 _major_agent = None
@@ -136,7 +138,7 @@ async def build_agent(
         # 创建代理
         agent = create_agent(
             model=model,
-            tools=[shell_exec, internet_search, read_image],
+            tools=[shell_exec, internet_search, read_image, search_vectors, list_collections],
             store=_store,
             checkpointer=_checkpoint,
             system_prompt=system_prompt,
@@ -270,10 +272,7 @@ async def process_agent(agent: Any, message: str):
                                                 config=config,
                                                 values={"messages": [image_message]}
                                             )
-                                            yield {
-                                                "type": "image_injected",
-                                                "content": "Image content injected into conversation"
-                                            }
+
                                     except Exception as e:
                                         yield {
                                             "type": "error",
@@ -373,11 +372,6 @@ async def ChatStream(
                 yield {
                     "type": "sub_agent",
                     "content": message["content"]
-                }
-            elif message["type"] == "image_injected":
-                yield {
-                    "type": "model_answer",
-                    "content": "analyzing image..."
                 }
             elif message["type"] == "error":
                 yield {

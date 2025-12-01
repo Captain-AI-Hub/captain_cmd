@@ -238,6 +238,29 @@ def get_workspace_path():
     """
     return _workspace_path
 
+def get_embeddings_config():
+    """
+    获取嵌入模型配置
+    Returns:
+        embeddings_config: 包含 model_name, api_key, base_url 的字典
+    """
+    config = get_model_config()
+    if config == "Error: toml_path is None":
+        return None
+    return config.get("embeddings_model", {})
+
+def get_vector_db_path():
+    """
+    获取向量数据库路径
+    Returns:
+        vector_db_path: 向量数据库目录路径
+    """
+    if not _workspace_path:
+        return None
+    base_path = Path(_workspace_path).resolve()
+    vector_db_path = os.path.join(base_path, ".captain", "vector_db")
+    return vector_db_path
+
 class Colors:
     """ANSI颜色代码"""
     HEADER = '\033[95m'

@@ -1,6 +1,6 @@
 .venv/
 config.toml
-test.py
+test*
 .captain/
 .build/
 __pycache__

@@ -46,6 +46,7 @@ COLLECT_ALL_PACKAGES = [
     "langchain_google_vertexai",
     "chromadb",
     "langchain_chroma",
+    "mistune",
     # 其他依赖
     "mcp",
     "pydantic",

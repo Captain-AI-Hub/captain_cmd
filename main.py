@@ -3,10 +3,10 @@ from utils.utils import (
     set_database_path, get_database_path, 
     get_local_file_store_path, get_workspace_path,
     get_major_agent_config, get_sub_agents_config,
-    get_prompt, list_prompt_templates
 )
 
 from utils.save_content import save_content
+from utils.command_parser import parse_command, CommandType, ResultStyle
 
 import argparse
 from chat.chat import ChatStream, cleanup_resources
@@ -27,7 +27,6 @@ from prompt_toolkit.styles import Style
 from utils.shell_prompt import CaptainShell, get_cached_system_commands
 from collections import OrderedDict
 from pathlib import Path
-from utils.sys_shell import parse_shell_command, execute_shell_command
 
 # import ssl
 # import urllib3
@@ -164,80 +163,91 @@ async def main():
             try:
                 # 获取用户输入
                 query_msg = await shell.prompt_async()
-                query_msg = query_msg.strip()
                 
-                # 检查退出命令
-                if query_msg.lower() in ["exit", "quit", "q"]:
-                    console.print("[bold green]👋 Goodbye![/bold green]")
+                # 统一命令解析
+                cmd_result = parse_command(query_msg)
+                
+                # 退出命令
+                if cmd_result.cmd_type == CommandType.EXIT:
+                    console.print(f"[bold green]{cmd_result.title}[/bold green]")
                     break
                 
-                # 忽略空输入
-                if not query_msg:
+                # 空输入
+                if cmd_result.cmd_type == CommandType.EMPTY:
                     continue
                 
-                # 检查是否是 shell 命令
-                is_shell, shell_command = parse_shell_command(query_msg)
-                if is_shell:
-                    if shell_command:
-                        console.print()
-                        result = execute_shell_command(shell_command)
-                        if result["success"]:
-                            console.print(Panel(
-                                result["output"],
-                                title=f"[bold cyan]🖥️  Shell: {result['command']}[/bold cyan]",
-                                border_style="cyan",
-                                box=box.SIMPLE
-                            ))
-                        else:
-                            console.print(Panel(
-                                result["output"],
-                                title=f"[bold red]❌ Shell: {result['command']}[/bold red]",
-                                border_style="red",
-                                box=box.SIMPLE
-                            ))
-                    else:
-                        console.print("[bold yellow]⚠️  Please provide a command after 'shell'[/bold yellow]")
-                    continue
-                
-                # 检查是否是 prompt 模板命令
-                if query_msg.startswith("/"):
-                    prompt_cmd = query_msg[1:].strip()  # 去掉 "/" 前缀
-                    
-                    # /list 列出所有模板
-                    if prompt_cmd == "list":
-                        console.print()
-                        templates = list_prompt_templates()
-                        if templates:
-                            table = Table(title="Prompt Templates", box=box.SIMPLE)
-                            table.add_column("Name", style="cyan")
-                            table.add_column("Args", style="yellow")
-                            table.add_column("Preview", style="dim")
-                            for name, info in templates.items():
-                                args_str = ", ".join(info["args"]) if info["args"] else "-"
-                                table.add_row(name, args_str, info["prompt_preview"])
-                            console.print(table)
-                        else:
-                            console.print("[bold yellow]⚠️  No prompt templates found[/bold yellow]")
-                        continue
-                    
-                    # 解析 prompt 模板
-                    result = get_prompt(prompt_cmd)
-                    if result is None:
-                        console.print(f"[bold yellow]⚠️  Unknown template: {prompt_cmd.split()[0]}[/bold yellow]")
-                        console.print("[dim]Use /list to see available templates[/dim]")
-                        continue
-                    elif result.startswith("Error:"):
-                        console.print(f"[bold red]❌ {result}[/bold red]")
-                        continue
-                    
-                    # 将解析后的 prompt 作为查询消息
-                    query_msg = result
+                # 需要显示结果的内置命令
+                if cmd_result.cmd_type in (CommandType.SHELL, CommandType.VECTOR, CommandType.PROMPT_LIST):
+                    console.print()
+                    style_map = {
+                        ResultStyle.SUCCESS: ("bold green", "green"),
+                        ResultStyle.ERROR: ("bold red", "red"),
+                        ResultStyle.WARNING: ("bold yellow", "yellow"),
+                        ResultStyle.INFO: ("bold cyan", "cyan"),
+                    }
+                    title_style, border_style = style_map.get(cmd_result.style, ("bold", "white"))
                     console.print(Panel(
-                        query_msg,
-                        title=f"[bold magenta]📝 Prompt: {prompt_cmd.split()[0]}[/bold magenta]",
+                        cmd_result.output,
+                        title=f"[{title_style}]{cmd_result.title}[/{title_style}]",
+                        border_style=border_style,
+                        box=box.SIMPLE
+                    ))
+                    continue
+                
+                # Prompt 模板命令（需要传递给 agent）
+                if cmd_result.cmd_type == CommandType.PROMPT:
+                    if not cmd_result.success:
+                        console.print()
+                        style_map = {
+                            ResultStyle.WARNING: ("bold yellow", "yellow"),
+                            ResultStyle.ERROR: ("bold red", "red"),
+                        }
+                        title_style, border_style = style_map.get(cmd_result.style, ("bold yellow", "yellow"))
+                        console.print(Panel(
+                            cmd_result.output,
+                            title=f"[{title_style}]{cmd_result.title}[/{title_style}]",
+                            border_style=border_style,
+                            box=box.SIMPLE
+                        ))
+                        continue
+                    
+                    # 成功解析的 prompt，显示后传递给 agent
+                    query_msg = cmd_result.passthrough_msg
+                    console.print(Panel(
+                        cmd_result.output,
+                        title=f"[bold magenta]{cmd_result.title}[/bold magenta]",
                         border_style="magenta",
                         box=box.SIMPLE
                     ))
+                
+                # RAG 命令（检索后传递给 agent）
+                elif cmd_result.cmd_type == CommandType.VECTOR_RAG:
+                    console.print()
+                    if not cmd_result.success:
+                        console.print(Panel(
+                            cmd_result.output,
+                            title=f"[bold red]{cmd_result.title}[/bold red]",
+                            border_style="red",
+                            box=box.SIMPLE
+                        ))
+                        continue
+                    
+                    # 显示检索到的上下文，然后传递增强提示词给 agent
+                    query_msg = cmd_result.passthrough_msg
+                    console.print(Panel(
+                        cmd_result.output,
+                        title=f"[bold cyan]{cmd_result.title}[/bold cyan]",
+                        border_style="cyan",
+                        box=box.SIMPLE
+                    ))
+                
+                # PASSTHROUGH: 直接传递给 agent
+                elif cmd_result.cmd_type == CommandType.PASSTHROUGH:
+                    query_msg = cmd_result.passthrough_msg
+                
+                # 确保 query_msg 有效
+                if not query_msg:
+                    continue
 
                 console.print()
                 

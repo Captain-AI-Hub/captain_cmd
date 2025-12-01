@@ -113,7 +113,7 @@ class CaptainCompleter(Completer):
     
     def __init__(self, get_templates_func: Optional[Callable] = None):
         self.get_templates_func = get_templates_func or list_prompt_templates
-        self._builtin_commands = ["exit", "quit", "q", "shell ", "/list"]
+        self._builtin_commands = ["exit", "quit", "q", "shell ", "vector ", "/list"]
     
     def get_completions(self, document, complete_event):
         text = document.text_before_cursor
@@ -190,6 +190,90 @@ class CaptainCompleter(Completer):
                         start_position=-len(shell_part),
                         display_meta="system"
                     )
+        
+        # vector 命令补全
+        elif text.startswith("vector "):
+            vector_part = text[7:]  # 去掉 "vector "
+            parts = vector_part.split()
+            
+            if len(parts) == 0 or (len(parts) == 1 and not vector_part.endswith(" ")):
+                # 补全 action: list, store, rag
+                action_part = parts[0] if parts else ""
+                for action, meta in [("list", "list collections"), ("store", "store markdown"), ("rag", "RAG query")]:
+                    if action.startswith(action_part.lower()):
+                        yield Completion(
+                            action,
+                            start_position=-len(action_part),
+                            display_meta=meta
+                        )
+            
+            # vector list - 无需更多参数
+            elif parts[0].lower() == "list":
+                pass  # list 命令完成
+            
+            # vector rag 补全
+            elif parts[0].lower() == "rag":
+                if len(parts) == 1 and vector_part.endswith(" "):
+                    yield Completion(
+                        "",
+                        start_position=0,
+                        display="{collection}",
+                        display_meta="collection name (required)"
+                    )
+                elif len(parts) == 2 and vector_part.endswith(" "):
+                    yield Completion(
+                        "",
+                        start_position=0,
+                        display="{query}",
+                        display_meta="your question (required)"
+                    )
+                elif len(parts) == 3 and vector_part.endswith(" "):
+                    yield Completion(
+                        "5",
+                        start_position=0,
+                        display="[top_k]",
+                        display_meta="optional, default: 5"
+                    )
+            
+            # vector store 补全
+            elif parts[0].lower() == "store":
+                if len(parts) == 1 or (len(parts) == 2 and not vector_part.endswith(" ")):
+                    target_part = parts[1] if len(parts) > 1 else ""
+                    if "markdown".startswith(target_part.lower()):
+                        yield Completion(
+                            "markdown",
+                            start_position=-len(target_part),
+                            display_meta="target"
+                        )
+                elif len(parts) >= 2 and parts[1].lower() == "markdown":
+                    if len(parts) == 2 and vector_part.endswith(" "):
+                        yield Completion(
+                            "",
+                            start_position=0,
+                            display="{Path}",
+                            display_meta="file path (required)"
+                        )
+                    elif len(parts) == 3 and vector_part.endswith(" "):
+                        yield Completion(
+                            "",
+                            start_position=0,
+                            display="[collection_name]",
+                            display_meta="optional, default: filename"
+                        )
+                    elif len(parts) == 4 and vector_part.endswith(" "):
+                        yield Completion(
+                            "600",
+                            start_position=0,
+                            display="[chunk_size]",
+                            display_meta="optional, default: 600"
+                        )
+                    elif len(parts) == 5 and vector_part.endswith(" "):
+                        yield Completion(
+                            "100",
+                            start_position=0,
+                            display="[chunk_overlap]",
+                            display_meta="optional, default: 100"
+                        )
 
 
 def create_prompt_style() -> Style:

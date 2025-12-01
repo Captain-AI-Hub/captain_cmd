@@ -127,6 +127,7 @@ def build():
         "--include-package=anthropic",
         "--include-package=rich",
         "--include-package=aiosqlite",
+        "--include-package=mistune",
         
         # 包含数据文件
         # "--include-data-dir=./data=data",
