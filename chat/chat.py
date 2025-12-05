@@ -186,6 +186,11 @@ async def build_agent(
 
 async def process_agent(agent: Any, message: str):
     """处理代理流式输出"""
+    # 跟踪活动的子代理：task_id -> subagent_name
+    active_subagents: dict[str, str] = {}
+    # 使用字典存储当前活动的子代理名称（避免 nonlocal 问题）
+    state = {"current_subagent": None}
+    
     try:
         messages = [HumanMessage(content=message)]
         config = get_major_config()
@@ -207,7 +212,20 @@ async def process_agent(agent: Any, message: str):
                 
                 # 判断是否来自子代理 (namespace 非空表示来自子图)
                 is_subagent = len(namespace) > 0 if namespace else False
-                subagent_name = str(namespace[0]).split(":")[0] if is_subagent and namespace else None
+                # 从 namespace 提取 task ID (格式如 'task:call_xxx')
+                # 用它来查找之前记录的子代理名称
+                subagent_name = None
+                if is_subagent and namespace:
+                    # 查找 namespace 中的 task:xxx 部分
+                    for ns_part in namespace:
+                        ns_str = str(ns_part)
+                        if ns_str.startswith("task:"):
+                            task_id = ns_str  # 完整的 'task:call_xxx'
+                            subagent_name = active_subagents.get(task_id)
+                            break
+                    # 如果没找到映射，使用当前活动的子代理名称
+                    if subagent_name is None:
+                        subagent_name = state["current_subagent"]
                 
                 # ============ messages 模式：流式 token ============
                 if stream_mode == "messages":
@@ -284,11 +302,18 @@ async def process_agent(agent: Any, message: str):
                                         # 主代理调用 task 工具 -> 启动子代理
                                         # 产出特殊事件，不当作普通工具处理
                                         task_args = tc.get('args', {})
+                                        task_call_id = tc.get('id', '')
+                                        subagent_type = task_args.get('subagent_type', 'general')
+                                        # 记录 task ID 到子代理名称的映射
+                                        # namespace 中会出现 'task:call_xxx' 格式
+                                        active_subagents[f"task:{task_call_id}"] = subagent_type
+                                        # 设置当前活动的子代理名称
+                                        state["current_subagent"] = subagent_type
                                         yield {
                                             "type": "sub_agent_start",
-                                            "subagent": task_args.get('agent', 'general'),
-                                            "task": task_args.get('task', ''),
-                                            "id": tc.get('id')
+                                            "subagent": subagent_type,
+                                            "task": task_args.get('description', ''),
+                                            "id": task_call_id
                                         }
                                     else:
                                         # 普通工具调用
@@ -319,6 +344,8 @@ async def process_agent(agent: Any, message: str):
                                         "content": msg.content,
                                         "id": msg.tool_call_id,
                                     }
+                                    # 清除当前活动的子代理名称
+                                    state["current_subagent"] = None
                                 else:
                                     # 普通工具结果
                                     yield {
