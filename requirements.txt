@@ -30,6 +30,9 @@ aiosqlite==0.21.0
 rich==14.2.0
 prompt_toolkit==3.0.52
 
+requests==2.32.5
+beautifulsoup4==4.14.3
+
 Nuitka==2.8.9
 pyinstaller==6.17.0
 pur==7.3.3

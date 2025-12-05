@@ -88,6 +88,8 @@ inside_tools 是内部编写的工具默认不传给子 agent。目前有的 ins
 * * internet_search : 互联网搜索 （需要 tavily api key）
 * vlm_tools 视觉语言模型工具（视觉模型生效）
 * * read_image : 读取图片
+* fetch_url : 获取 URL 内容
+* * fetch_url : 获取 URL 内容
 
 **主 agent 默认配置：**
 
@@ -103,6 +105,7 @@ inside_tools:
 * shell_exec : 执行 shell 命令
 * internet_search : 互联网搜索 （需要 tavily api key）
 * read_image : 读取图片
+* fetch_url : 获取 URL 内容
 
 **子 agent 默认配置：**
 

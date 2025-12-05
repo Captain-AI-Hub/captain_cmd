@@ -73,3 +73,9 @@ args = ["example_arg1", "example_arg2"]
 prompt = '''
 use {example_arg1} and {example_arg2} to ...
 '''
+
+[prompt_templates.fetch_url]
+args = ["url"]
+prompt = '''
+Fetch the content from {url}.
+'''

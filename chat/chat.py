@@ -36,7 +36,7 @@ from langgraph.store.sqlite.aio import AsyncSqliteStore
 import aiosqlite
 
 from tools.mod_vector import store_markdown, search_vectors, list_collections
-
+from tools.fetch_url import fetch_url
 _store = None
 _checkpoint = None
 _major_agent = None
@@ -153,7 +153,8 @@ async def build_agent(
         # 创建代理
         agent = create_agent(
             model=model,
-            tools=[shell_exec, internet_search, read_image, search_vectors, list_collections],
+            tools=[shell_exec, internet_search, read_image, 
+                   search_vectors, list_collections, fetch_url],
             store=_store,
             checkpointer=_checkpoint,
             system_prompt=system_prompt,
