@@ -2,6 +2,8 @@
 
 *仅供学习研究，请勿非法使用*
 
+*已测试 ChatModelProvider: OpenAI, Anthropic*
+
 ## 简介
 
 Captain CMD Tools 是一个基于 LangChain 和 LangGraph 的命令行工具，用于与 LLM 进行交互。支持长上下文存储，保存用户对话历史。按量调用LLM，支持自定义模型，无调用限制。
